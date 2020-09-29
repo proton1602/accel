@@ -69,7 +69,7 @@ class RamNet(nn.Module):
 def get_commitid():
     # return short commit id
     cmd = "git rev-parse --short HEAD"
-    commitid = subprocess.check_output(cmd.split()).strip().decode('utf-8')
+    commitid = subprocess.check_output(cmd.split()).strip()
     return commitid
 
 
