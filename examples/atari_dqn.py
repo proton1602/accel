@@ -10,6 +10,7 @@ import hydra
 import mlflow
 import os
 import subprocess
+import requests
 
 from accel.utils.atari_wrappers import make_atari, make_atari_ram
 from accel.explorers import epsilon_greedy
@@ -72,6 +73,13 @@ def get_commitid():
     commitid = subprocess.check_output(cmd.split()).strip()
     return commitid
 
+def slack_notify(msg = 'done'):
+    # Notification to slack
+    # Register id and url in environment variables
+    slack_user_id = os.getenv('SLACK_USER_ID')
+    slack_webhook_url = os.getenv('SLACK_WEBHOOK_URL')
+    if slack_user_id is not None and slack_webhook_url is not None:
+        requests.post(slack_webhook_url, json={"text":msg})
 
 @hydra.main(config_name='config/atari_dqn_config.yaml')
 def main(cfg):
