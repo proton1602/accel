@@ -50,7 +50,7 @@ class DQN:
 
         self.total_steps += 1
         if self.total_steps % self.update_interval == 0:
-            self.train()
+            return self.train()
 
     def next_state_value(self, next_states):
         return self.target_q_func(next_states).max(1)[0].detach()
@@ -135,6 +135,7 @@ class DQN:
         if self.total_steps - self.prev_target_update_time > self.target_update_interval:
             self.target_q_func.load_state_dict(self.q_func.state_dict())
             self.prev_target_update_time = self.total_steps
+        return loss.to('cpu').detach().numpy().copy()[0]
 
 
 class DoubleDQN(DQN):
