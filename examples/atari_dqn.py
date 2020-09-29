@@ -9,6 +9,7 @@ import numpy as np
 import hydra
 import mlflow
 import os
+import subprocess
 
 from accel.utils.atari_wrappers import make_atari, make_atari_ram
 from accel.explorers import epsilon_greedy
@@ -65,6 +66,13 @@ class RamNet(nn.Module):
         return F.relu(self.fc4(x))
 
 
+def get_commitid():
+    # return short commit id
+    cmd = "git rev-parse --short HEAD"
+    commitid = subprocess.check_output(cmd.split()).strip().decode('utf-8')
+    return commitid
+
+
 @hydra.main(config_name='config/atari_dqn_config.yaml')
 def main(cfg):
     set_seed(cfg.seed)
@@ -84,6 +92,7 @@ def main(cfg):
         mlflow.log_param('no_stack', cfg.no_stack)
         mlflow.log_param('nstep', cfg.nstep)
         mlflow.set_tag('env', cfg.env)
+        mlflow.set_tag('commitid', get_commitid())
 
         if not cfg.device:
             cfg.device = 'cuda' if torch.cuda.is_available() else 'cpu'
