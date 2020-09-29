@@ -1,4 +1,4 @@
-env: BreakoutNoFrameskip-v4
+env: FreewayNoFrameskip-v4
 load: ""
 save: ""
 device: ""
