@@ -135,7 +135,7 @@ class DQN:
         if self.total_steps - self.prev_target_update_time > self.target_update_interval:
             self.target_q_func.load_state_dict(self.q_func.state_dict())
             self.prev_target_update_time = self.total_steps
-        return loss.to('cpu').detach().numpy().copy()[0]
+        return float(loss.to('cpu').detach().numpy().copy())
 
 
 class DoubleDQN(DQN):
