@@ -11,6 +11,7 @@ import mlflow
 import os
 import subprocess
 import requests
+import pathlib
 
 from accel.utils.atari_wrappers import make_atari, make_atari_ram
 from accel.explorers import epsilon_greedy
@@ -84,6 +85,16 @@ def slack_notify(msg = 'done'):
 @hydra.main(config_name='config/atari_dqn_config.yaml')
 def main(cfg):
     set_seed(cfg.seed)
+
+    model_save_path = os.getcwd()
+    if cfg.model_evacuation:
+        # Save only the model under localhome
+        hydra_abs_cwd = pathlib.Path(os.getcwd())
+        org_abs_cwd = hydra.utils.get_original_cwd()
+        hydra_rel_cwb  = str(hydra_abs_cwd.relative_to(org_abs_cwd))
+        local_home = os.getenv('LOCALHOME')
+        model_save_path = os.path.join(local_home, hydra_rel_cwb)
+        os.makedirs(model_save_path, exist_ok=True)
 
     cwd = hydra.utils.get_original_cwd()
     mlflow.set_tracking_uri(os.path.join(cwd, 'mlruns'))
@@ -234,7 +245,7 @@ def main(cfg):
                 scores.append(total_reward)
 
                 if total_reward > best_score:
-                    model_name = f'{agent.total_steps}.model'
+                    model_name = os.path.join(model_save_path, f'{agent.total_steps}.model')
                     torch.save(q_func.state_dict(), model_name)
                     best_score = total_reward
 
@@ -268,7 +279,7 @@ def main(cfg):
         score_steps.append(agent.total_steps)
         scores.append(total_reward)
 
-        model_name = f'final.model'
+        model_name = os.path.join(model_save_path, f'final.model')
         torch.save(q_func.state_dict(), model_name)
 
         now = time()
