@@ -97,6 +97,8 @@ def main(cfg):
             model_save_path = os.path.join(local_home, hydra_rel_cwb)
             os.makedirs(model_save_path, exist_ok=True)
 
+    slack_notify("start {} on {}".format(cfg.name, os.uname()[1]))
+
     cwd = hydra.utils.get_original_cwd()
     mlflow.set_tracking_uri(os.path.join(cwd, 'mlruns'))
     mlflow.set_experiment('atari_dqn')
@@ -296,6 +298,7 @@ def main(cfg):
         duration = np.round(elapsed / 60 / 60, 2)
         mlflow.log_metric('duration', duration)
         print('Complete')
+        slack_notify("Complete {} on {}, duration: {}h".format(cfg.name, os.uname()[1], duration))
         env.close()
 
 
