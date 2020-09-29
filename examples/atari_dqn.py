@@ -99,6 +99,7 @@ def main(cfg):
         # mlflow.log_param('high', cfg.high_reso)
         mlflow.log_param('no_stack', cfg.no_stack)
         mlflow.log_param('nstep', cfg.nstep)
+        mlflow.log_param('huber', cfg.huber)
         mlflow.set_tag('env', cfg.env)
         mlflow.set_tag('commitid', get_commitid())
 
@@ -154,7 +155,8 @@ def main(cfg):
         agent = dqn.DoubleDQN(q_func, optimizer, memory, cfg.gamma,
                               explorer, cfg.device, batch_size=32,
                               target_update_interval=10000,
-                              replay_start_step=cfg.replay_start_step)
+                              replay_start_step=cfg.replay_start_step,
+                              huber=cfg.huber)
 
         if cfg.demo:
             for x in range(10):

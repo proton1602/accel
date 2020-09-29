@@ -16,3 +16,4 @@ high_reso: False
 no_stack: False
 replay_start_step: 10_000
 nstep: 1
+huber: True
