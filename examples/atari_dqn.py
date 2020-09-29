@@ -93,8 +93,9 @@ def main(cfg):
         org_abs_cwd = hydra.utils.get_original_cwd()
         hydra_rel_cwb  = str(hydra_abs_cwd.relative_to(org_abs_cwd))
         local_home = os.getenv('LOCALHOME')
-        model_save_path = os.path.join(local_home, hydra_rel_cwb)
-        os.makedirs(model_save_path, exist_ok=True)
+        if local_home is not None:
+            model_save_path = os.path.join(local_home, hydra_rel_cwb)
+            os.makedirs(model_save_path, exist_ok=True)
 
     cwd = hydra.utils.get_original_cwd()
     mlflow.set_tracking_uri(os.path.join(cwd, 'mlruns'))
