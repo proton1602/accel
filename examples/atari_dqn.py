@@ -102,6 +102,7 @@ def main(cfg):
         mlflow.log_param('huber', cfg.huber)
         mlflow.set_tag('env', cfg.env)
         mlflow.set_tag('commitid', get_commitid())
+        mlflow.set_tag('machine', os.uname()[1])
 
         if not cfg.device:
             cfg.device = 'cuda' if torch.cuda.is_available() else 'cpu'
