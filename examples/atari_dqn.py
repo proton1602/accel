@@ -66,7 +66,7 @@ class RamNet(nn.Module):
         x = F.relu(self.fc1(x))
         x = F.relu(self.fc2(x))
         x = F.relu(self.fc3(x))
-        return F.relu(self.fc4(x))
+        return self.fc4(x)
 
 
 def get_commitid():
