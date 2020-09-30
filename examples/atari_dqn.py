@@ -12,6 +12,7 @@ import os
 import subprocess
 import requests
 import pathlib
+import getpass
 
 from accel.utils.atari_wrappers import make_atari, make_atari_ram
 from accel.explorers import epsilon_greedy
@@ -82,10 +83,7 @@ def slack_notify(msg = 'done'):
     if slack_user_id is not None and slack_webhook_url is not None:
         requests.post(slack_webhook_url, json={"text":msg})
 
-@hydra.main(config_name='config/atari_dqn_config.yaml')
-def main(cfg):
-    set_seed(cfg.seed)
-
+def get_model_path(model_evacuation):
     model_save_path = os.getcwd()
     if cfg.model_evacuation:
         # Save only the model under localhome
@@ -96,7 +94,16 @@ def main(cfg):
         if local_home is not None:
             model_save_path = os.path.join(local_home, hydra_rel_cwb)
             os.makedirs(model_save_path, exist_ok=True)
+    user_name = getpass.getuser()
+    machine_name = os.uname()[1]
+    model_save_upath = user_name + '@' + machine_name + ':' + model_save_path
+    return model_save_path, model_save_upath
 
+@hydra.main(config_name='config/atari_dqn_config.yaml')
+def main(cfg):
+    set_seed(cfg.seed)
+
+    model_save_path, model_save_upath = get_model_path(cfg.model_evacuation)
     slack_notify("start {} on {}".format(cfg.name, os.uname()[1]))
 
     cwd = hydra.utils.get_original_cwd()
@@ -203,6 +210,7 @@ def main(cfg):
         train_start_time = time()
 
         log_file_name = 'scores.txt'
+        model_file_name = 'model_path.txt'
         best_score = -1e10
 
         while agent.total_steps < cfg.steps:
@@ -250,6 +258,10 @@ def main(cfg):
                 if total_reward > best_score:
                     model_name = os.path.join(model_save_path, f'{agent.total_steps}.model')
                     torch.save(q_func.state_dict(), model_name)
+                    model_path = os.path.join(model_save_upath, f'{agent.total_steps}.model')
+                    # mlflow.log_artifact(model_path)
+                    with open(model_file_name, 'a') as f:
+                        f.write(model_path)
                     best_score = total_reward
 
                 now = time()
@@ -285,6 +297,16 @@ def main(cfg):
 
         model_name = os.path.join(model_save_path, f'final.model')
         torch.save(q_func.state_dict(), model_name)
+        model_path = os.path.join(model_save_upath, f'final.model')
+        # mlflow.log_artifact(model_path)
+        with open(model_file_name, 'a') as f:
+            f.write(model_path)
+        try:
+            mlflow.log_artifact(model_file_name)
+            mlflow.log_artifact(model_path)
+        except Exception as e:
+            with open(log_file_name, 'a') as f:
+                f.write(e)
 
         now = time()
         elapsed = now - train_start_time
