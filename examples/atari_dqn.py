@@ -85,7 +85,7 @@ def slack_notify(msg = 'done'):
 
 def get_model_path(model_evacuation):
     model_save_path = os.getcwd()
-    if cfg.model_evacuation:
+    if model_evacuation:
         # Save only the model under localhome
         hydra_abs_cwd = pathlib.Path(os.getcwd())
         org_abs_cwd = hydra.utils.get_original_cwd()
