@@ -221,8 +221,8 @@ def main(cfg):
 
                 next_valid = 1 if step == env.spec.max_episode_steps else float(
                     not done)
-                loss = agent.update(obs, action, next_obs, reward, next_valid)
-                if loss is not None: mlflow.log_metric('loss', loss, step=agent.total_steps)
+                loss_ = agent.update(obs, action, next_obs, reward, next_valid)
+                if loss_ is not None: loss = loss_
 
                 obs = next_obs
 
@@ -259,6 +259,7 @@ def main(cfg):
                 print(log, end='')
                 mlflow.log_metric('reward', total_reward,
                                   step=agent.total_steps)
+                if loss is not None: mlflow.log_metric('loss', loss, step=agent.total_steps)
 
                 with open(log_file_name, 'a') as f:
                     f.write(log)
