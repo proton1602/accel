@@ -12,6 +12,7 @@ import os
 import subprocess
 import requests
 import pathlib
+import random
 
 from accel.utils.atari_wrappers import make_atari, make_atari_ram
 from accel.explorers import epsilon_greedy
@@ -113,6 +114,7 @@ def main(cfg):
         # mlflow.log_param('high', cfg.high_reso)
         mlflow.log_param('no_stack', cfg.no_stack)
         mlflow.log_param('nstep', cfg.nstep)
+        mlflow.log_param('noopmax', cfg.noopmax)
         mlflow.log_param('huber', cfg.huber)
         mlflow.set_tag('env', cfg.env)
         mlflow.set_tag('commitid', get_commitid())
@@ -212,9 +214,13 @@ def main(cfg):
             done = False
             total_reward = 0
             step = 0
+            noopnum = random.randint(0, cfg.noopmax)
 
             while not done:
-                action = agent.act(obs)
+                if step < noopnum:
+                    action = 0 # do nothing
+                else:
+                    action = agent.act(obs)
                 next_obs, reward, done, _ = env.step(action)
                 total_reward += reward
                 step += 1
