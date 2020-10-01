@@ -15,7 +15,7 @@ color: False
 high_reso: False
 no_stack: False
 replay_start_step: 50_000
-nstep: 1
+nstep: 5
 huber: True
 model_evacuation: True
 net_version: 0
