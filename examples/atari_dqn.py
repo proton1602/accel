@@ -94,16 +94,13 @@ def get_model_path(model_evacuation):
         if local_home is not None:
             model_save_path = os.path.join(local_home, hydra_rel_cwb)
             os.makedirs(model_save_path, exist_ok=True)
-    user_name = getpass.getuser()
-    machine_name = os.uname()[1]
-    model_save_upath = user_name + '@' + machine_name + ':' + model_save_path
-    return model_save_path, model_save_upath
+    return model_save_path
 
 @hydra.main(config_name='config/atari_dqn_config.yaml')
 def main(cfg):
     set_seed(cfg.seed)
 
-    model_save_path, model_save_upath = get_model_path(cfg.model_evacuation)
+    model_save_path = get_model_path(cfg.model_evacuation)
     slack_notify("start {} on {}".format(cfg.name, os.uname()[1]))
 
     cwd = hydra.utils.get_original_cwd()
@@ -258,10 +255,8 @@ def main(cfg):
                 if total_reward > best_score:
                     model_name = os.path.join(model_save_path, f'{agent.total_steps}.model')
                     torch.save(q_func.state_dict(), model_name)
-                    model_path = os.path.join(model_save_upath, f'{agent.total_steps}.model')
-                    # mlflow.log_artifact(model_path)
                     with open(model_file_name, 'a') as f:
-                        f.write(model_path)
+                        f.write(model_name+'\n')
                     best_score = total_reward
 
                 now = time()
@@ -297,16 +292,9 @@ def main(cfg):
 
         model_name = os.path.join(model_save_path, f'final.model')
         torch.save(q_func.state_dict(), model_name)
-        model_path = os.path.join(model_save_upath, f'final.model')
-        # mlflow.log_artifact(model_path)
         with open(model_file_name, 'a') as f:
-            f.write(model_path)
-        try:
-            mlflow.log_artifact(model_file_name)
-            mlflow.log_artifact(model_path)
-        except Exception as e:
-            with open(log_file_name, 'a') as f:
-                f.write(e)
+            f.write(model_name+'\n')
+        mlflow.log_artifact(model_file_name)
 
         now = time()
         elapsed = now - train_start_time
