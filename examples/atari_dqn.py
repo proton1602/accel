@@ -53,6 +53,41 @@ class Net(nn.Module):
         v = self.v_fc2(v)
         return v + adv - adv.mean(dim=1, keepdim=True)
 
+class Net_1(nn.Module):
+    def __init__(self, input, output, dueling=False, high_reso=False):
+        super().__init__()
+        self.dueling = dueling
+        self.conv1 = nn.Conv2d(input, 32, kernel_size=8, stride=4)
+        self.conv2 = nn.Conv2d(32, 64, kernel_size=4, stride=2)
+        self.conv3 = nn.Conv2d(64, 64, kernel_size=3, stride=1)
+
+        linear_size = 7 * 7 * 64 if not high_reso else 12 * 12 * 64
+        self.fc1 = nn.Linear(linear_size, 512)
+        self.fc2 = nn.Linear(512, 128)
+        self.fc3 = nn.Linear(128, output)
+        if self.dueling:
+            self.v_fc1 = nn.Linear(linear_size, 512)
+            self.v_fc2 = nn.Linear(512, 128)
+            self.v_fc3 = nn.Linear(128, 1)
+
+    def forward(self, x):
+        x = x / 255.
+        x = F.relu(self.conv1(x))
+        x = F.relu(self.conv2(x))
+        x = F.relu(self.conv3(x))
+        x = x.reshape(x.size(0), -1)
+
+        adv = F.relu(self.fc1(x))
+        adv = F.relu(self.fc2(adv))
+        adv = self.fc3(adv)
+        if not self.dueling:
+            return adv
+
+        v = F.relu(self.v_fc1(x))
+        v = F.relu(self.v_fc2(v))
+        v = self.v_fc3(v)
+        return v + adv - adv.mean(dim=1, keepdim=True)
+
 
 class RamNet(nn.Module):
     def __init__(self, input, output):
@@ -67,6 +102,19 @@ class RamNet(nn.Module):
         x = F.relu(self.fc2(x))
         x = F.relu(self.fc3(x))
         return self.fc4(x)
+
+
+class RamNet_1(nn.Module):
+    def __init__(self, input, output):
+        super().__init__()
+        self.fc1 = nn.Linear(input, 512)
+        self.fc2 = nn.Linear(512, 128)
+        self.fc3 = nn.Linear(128, output)
+
+    def forward(self, x):
+        x = F.relu(self.fc1(x))
+        x = F.relu(self.fc2(x))
+        return self.fc3(x)
 
 
 def get_commitid():
@@ -118,6 +166,7 @@ def main(cfg):
         mlflow.log_param('no_stack', cfg.no_stack)
         mlflow.log_param('nstep', cfg.nstep)
         mlflow.log_param('huber', cfg.huber)
+        mlflow.log_param('net_version', cfg.net_version)
         mlflow.set_tag('env', cfg.env)
         mlflow.set_tag('commitid', get_commitid())
         mlflow.set_tag('machine', os.uname()[1])
@@ -148,10 +197,19 @@ def main(cfg):
         dim_action = env.action_space.n
 
         if is_ram:
-            q_func = RamNet(dim_state, dim_action)
+            if cfg.net_version==0:
+                q_func = RamNet(dim_state, dim_action)
+            elif cfg.net_version==1:
+                q_func = RamNet_1(dim_state, dim_action)
+            else: raise IndexError('net_version in [0,1]')
         else:
-            q_func = Net(dim_state, dim_action,
+            if cfg.net_version==0:
+                q_func = Net(dim_state, dim_action,
                          dueling=cfg.dueling, high_reso=cfg.high_reso)
+            elif cfg.net_version==1:
+                q_func = Net_1(dim_state, dim_action,
+                         dueling=cfg.dueling, high_reso=cfg.high_reso)
+            else: raise IndexError('net_version in [0,1]')
 
         if cfg.load:
             q_func.load_state_dict(torch.load(os.path.join(

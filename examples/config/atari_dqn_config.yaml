@@ -18,3 +18,4 @@ replay_start_step: 50_000
 nstep: 1
 huber: True
 model_evacuation: True
+net_version: 0
