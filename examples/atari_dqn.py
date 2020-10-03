@@ -300,13 +300,13 @@ def main(cfg):
 
                 while True:
                     obs = eval_env.reset()
-                    eval_env.render()
+                    # eval_env.render()
                     done = False
 
                     while not done:
                         action = agent.act(obs, greedy=True)
                         obs, reward, done, _ = eval_env.step(action)
-                        eval_env.render()
+                        # eval_env.render()
 
                         # print(reward)
                         total_reward += reward
