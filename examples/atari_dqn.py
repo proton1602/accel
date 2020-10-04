@@ -171,6 +171,30 @@ class RamNet_2(nn.Module):
         return self.fc4(x)
 
 
+class Action_log():
+    def __init__(self, action_space_n):
+        self.n = action_space_n
+        self.action_log = []
+        self.action_count = [0] * self.n
+    
+    def reset(self):
+        self.action_log = []
+        self.action_count = [0] * self.n
+    
+    def __call__(self, action):
+        self.action_log.append(action)
+        self.action_count[action] += 1
+    
+    def log(self, raw_log=False):
+        action_len = str(len(self.action_log))
+        action_count = str(self.action_count)
+        if raw_log:
+            action_log = str(self.action_log)
+            return action_len + '; ' + action_count + '; ' + action_log
+        else:
+            return action_len + '; ' + action_count
+
+
 def get_commitid():
     # return short commit id
     cmd = "git rev-parse --short HEAD"
@@ -284,6 +308,7 @@ def main(cfg):
 
         score_steps = []
         scores = []
+        action_log = Action_log(env.action_space.n)
 
         explorer = epsilon_greedy.LinearDecayEpsilonGreedy(
             start_eps=1.0, end_eps=0.1, decay_steps=1e6)
@@ -301,10 +326,12 @@ def main(cfg):
                 while True:
                     obs = eval_env.reset()
                     # eval_env.render()
+                    action_log.reset()
                     done = False
 
                     while not done:
                         action = agent.act(obs, greedy=True)
+                        action_log(action)
                         obs, reward, done, _ = eval_env.step(action)
                         # eval_env.render()
 
@@ -315,6 +342,7 @@ def main(cfg):
                         break
 
                 print('Episode:', x, 'Score:', total_reward)
+                print(action_log.log())
 
             exit(0)
 
@@ -325,6 +353,7 @@ def main(cfg):
 
         log_file_name = 'scores.txt'
         model_file_name = 'model_path.txt'
+        action_file_name = 'action.txt'
         best_score = -1e10
 
         while agent.total_steps < cfg.steps:
@@ -353,10 +382,12 @@ def main(cfg):
 
                 while True:
                     obs = eval_env.reset()
+                    action_log.reset()
                     done = False
 
                     while not done:
                         action = agent.act(obs, greedy=True)
+                        action_log(action)
                         obs, reward, done, _ = eval_env.step(action)
 
                         total_reward += reward
@@ -386,19 +417,22 @@ def main(cfg):
                 mlflow.log_metric('reward', total_reward,
                                   step=agent.total_steps)
                 if loss is not None: mlflow.log_metric('loss', loss, step=agent.total_steps)
-
                 with open(log_file_name, 'a') as f:
                     f.write(log)
+                with open(action_file_name, 'a') as f:
+                    f.write(action_log.log() + '\n')
 
         # final evaluation
         total_reward = 0
 
         while True:
             obs = eval_env.reset()
+            action_log.reset()
             done = False
 
             while not done:
                 action = agent.act(obs, greedy=True)
+                action_log(action)
                 obs, reward, done, _ = eval_env.step(action)
 
                 total_reward += reward
@@ -423,9 +457,12 @@ def main(cfg):
         log = f'{agent.total_steps} {total_reward} {elapsed:.1f}\n'
         print(log, end='')
         mlflow.log_metric('reward', total_reward, step=agent.total_steps)
-
         with open(log_file_name, 'a') as f:
             f.write(log)
+
+        with open(action_file_name, 'a') as f:
+            f.write(action_log.log() + '\n')
+        mlflow.log_artifact(action_file_name)
 
         duration = np.round(elapsed / 60 / 60, 2)
         mlflow.log_metric('duration', duration)
