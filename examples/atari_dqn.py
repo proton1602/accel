@@ -372,8 +372,10 @@ def main(cfg):
                 if total_reward > best_score:
                     model_name = os.path.join(model_save_path, f'{agent.total_steps}.model')
                     torch.save(q_func.state_dict(), model_name)
+                    user_name = getpass.getuser()
+                    machine_name = os.uname()[1]
                     with open(model_file_name, 'a') as f:
-                        f.write(model_name+'\n')
+                        f.write(user_name + '@' + machine_name + ':'+ model_name+'\n')
                     best_score = total_reward
 
                 now = time()
@@ -409,8 +411,10 @@ def main(cfg):
 
         model_name = os.path.join(model_save_path, f'final.model')
         torch.save(q_func.state_dict(), model_name)
+        user_name = getpass.getuser()
+        machine_name = os.uname()[1]
         with open(model_file_name, 'a') as f:
-            f.write(model_name+'\n')
+            f.write(user_name + '@' + machine_name + ':' + model_name+'\n')
         mlflow.log_artifact(model_file_name)
 
         now = time()
