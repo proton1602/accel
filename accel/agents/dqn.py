@@ -34,7 +34,7 @@ class DQN:
 
         self.target_q_func.eval()
 
-    def act(self, obs, greedy=False):
+    def act(self, obs, greedy=False, act_value_out=False):
         obs = torch.tensor(obs, device=self.device, dtype=torch.float32)
 
         with torch.no_grad():
@@ -42,7 +42,10 @@ class DQN:
 
         action = self.explorer.act(
             self.total_steps, action_value, greedy=greedy)
-        return action.item()
+        if act_value_out:
+            return action.item(), action_value
+        else:
+            return action.item()
 
     def update(self, obs, action, next_obs, reward, valid):
         self.replay_buffer.push(obs, action, next_obs,

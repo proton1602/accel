@@ -194,6 +194,11 @@ class Action_log():
         else:
             return action_len + '; ' + action_count
 
+def act_value_log(action, action_value):
+    act_str = str(action)
+    act_mean_str = str(action_value.mean().to('cpu').detach().numpy().copy())
+    act_max_str = str(action_value.max().to('cpu').detach().numpy().copy())
+    return act_str + ', ' + act_mean_str + ', ' + act_max_str
 
 def get_commitid():
     # return short commit id
@@ -354,6 +359,7 @@ def main(cfg):
         log_file_name = 'scores.txt'
         model_file_name = 'model_path.txt'
         action_file_name = 'action.txt'
+        act_value_file_name = 'action_value.txt'
         best_score = -1e10
 
         while agent.total_steps < cfg.steps:
@@ -386,7 +392,7 @@ def main(cfg):
                     done = False
 
                     while not done:
-                        action = agent.act(obs, greedy=True)
+                        action, action_value = agent.act(obs, greedy=True, act_value_out=True)
                         action_log(action)
                         obs, reward, done, _ = eval_env.step(action)
 
@@ -421,6 +427,8 @@ def main(cfg):
                     f.write(log)
                 with open(action_file_name, 'a') as f:
                     f.write(action_log.log() + '\n')
+                with open(act_value_file_name, 'a') as f:
+                    f.write(act_value_log(action, action_value) + '\n')
 
         # final evaluation
         total_reward = 0
@@ -431,7 +439,7 @@ def main(cfg):
             done = False
 
             while not done:
-                action = agent.act(obs, greedy=True)
+                action, action_value = agent.act(obs, greedy=True, act_value_out=True)
                 action_log(action)
                 obs, reward, done, _ = eval_env.step(action)
 
@@ -463,6 +471,10 @@ def main(cfg):
         with open(action_file_name, 'a') as f:
             f.write(action_log.log() + '\n')
         mlflow.log_artifact(action_file_name)
+
+        with open(act_value_file_name, 'a') as f:
+            f.write(act_value_log(action, action_value) + '\n')
+        mlflow.log_artifact(act_value_file_name)
 
         duration = np.round(elapsed / 60 / 60, 2)
         mlflow.log_metric('duration', duration)
