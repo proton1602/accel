@@ -477,6 +477,11 @@ def get_model_path(model_evacuation):
             os.makedirs(model_save_path, exist_ok=True)
     return model_save_path
 
+def check_and_get(model_upath):
+    user_machine, model_path = model_upath.split(':')
+    if not os.path.exists(model_path):
+        subprocess.call(f'scp {model_upath} {model_path}', shell=True)
+
 @hydra.main(config_name='config/atari_dqn_config.yaml')
 def main(cfg):
     set_seed(cfg.seed)
