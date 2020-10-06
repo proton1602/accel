@@ -248,12 +248,12 @@ class GConv2d(nn.Module):
             self.key_list.append(f'adapt{i}')
         self.LinearDict['new'] = Conv2d_hold(in_channels, out_channels, kernel_size, stride=stride)
         self.key_list.append('new')
-        self.reuse_len = len(module_list)
-        if self.reuse_len == 0:
+        self.len = len(self.LinearDict)
+        if self.len == 1:
             self.alpha = nn.Parameter(torch.ones(1), requires_grad=False)
         else:
-            bound = 1 / math.sqrt(self.reuse_len)
-            self.alpha = nn.Parameter(nn.init.uniform_(torch.empty(self.reuse_len), -bound, bound),
+            bound = 1 / math.sqrt(self.len)
+            self.alpha = nn.Parameter(nn.init.uniform_(torch.empty(self.len), -bound, bound),
                 requires_grad=True)
 
     def forward(self, x, phase):
@@ -262,27 +262,36 @@ class GConv2d(nn.Module):
         for i, key in enumerate(self.key_list):
             self.out += self.LinearDict[key](x) * self.alpha[i]
         return self.out
+    
+    def reset_alpha(self):
+        if self.len == 1:
+            self.alpha = nn.Parameter(torch.ones(1), requires_grad=False)
+        else:
+            bound = 1 / math.sqrt(self.len)
+            self.alpha = nn.Parameter(nn.init.uniform_(torch.empty(self.len), -bound, bound),
+                requires_grad=True)
 
 
 class GLinear(nn.Module):
-    def __init__(self, in_channels, out_channels, module_list=[]):
+    def __init__(self, in_channels, out_channels, module_list=[], no_grow=False):
         super(GLinear, self).__init__()
         self.LinearDict = nn.ModuleDict()
         self.key_list = [] # Guarantee the order
         for i, module in enumerate(module_list):
             self.LinearDict[f'reuse{i}'] = module
             self.key_list.append(f'reuse{i}')
-        for i, module in enumerate(module_list):
-            self.LinearDict[f'adapt{i}'] = AdaptL(module, i, in_channels, out_channels, self)
-            self.key_list.append(f'adapt{i}')
-        self.LinearDict['new'] = Linear_hold(in_channels, out_channels)
-        self.key_list.append('new')
-        self.reuse_len = len(module_list)
-        if self.reuse_len == 0:
+        if not no_grow:
+            for i, module in enumerate(module_list):
+                self.LinearDict[f'adapt{i}'] = AdaptL(module, i, in_channels, out_channels, self)
+                self.key_list.append(f'adapt{i}')
+            self.LinearDict['new'] = Linear_hold(in_channels, out_channels)
+            self.key_list.append('new')
+        self.len = len(self.LinearDict)
+        if self.len == 1:
             self.alpha = nn.Parameter(torch.ones(1), requires_grad=False)
         else:
-            bound = 1 / math.sqrt(self.reuse_len)
-            self.alpha = nn.Parameter(nn.init.uniform_(torch.empty(self.reuse_len), -bound, bound),
+            bound = 1 / math.sqrt(self.len)
+            self.alpha = nn.Parameter(nn.init.uniform_(torch.empty(self.len), -bound, bound),
                 requires_grad=True)
 
     def forward(self, x, phase):
@@ -291,33 +300,130 @@ class GLinear(nn.Module):
         for i, key in enumerate(self.key_list):
             self.out += self.LinearDict[key](x) * self.alpha[i]
         return self.out
-
+    
+    def reset_alpha(self):
+        if self.len == 1:
+            self.alpha = nn.Parameter(torch.ones(1), requires_grad=False)
+        else:
+            bound = 1 / math.sqrt(self.len)
+            self.alpha = nn.Parameter(nn.init.uniform_(torch.empty(self.len), -bound, bound),
+                requires_grad=True)
 
 class GNet(nn.Module):
-    def __init__(self, in_channels, out_channels, ):
+    def __init__(self, in_channels, out_channels, first_task, first_model, second_task, no_grow=False,
+         high_reso=False, task_num = 1):
         super(GNet, self).__init__()
-        self.conv1 = Gconv2d(in_channels, 32, kernel_size=8, stride=4)
-        self.conv2 = Gconv2d(32, 64, kernel_size=4, stride=2)
-        self.conv3 = Gconv2d(64, 64, kernel_size=3, stride=1)
-
-        linear_size = 7 * 7 * 64 if not high_reso else 12 * 12 * 64
-        self.fc1 = GLinear(linear_size, 512)
-        self.fc2 = GLinear(512, 256)
-        self.fc3 = GLinear(256, 128)
-        self.fc4 = GLinear(128, out_channels)
+        self.linear_size = 7 * 7 * 64 if not high_reso else 12 * 12 * 64
+        self.first_task = make_atari_ram(first_task) if is_ram(first_task) else make_atari(first_task)
+        self.first_in_channels = self.first_task.observation_space.shape[0]
+        self.first_out_channels = self.first_task.action_space.n
+        self.f2s = ('ram' if is_ram(first_task) else 'img') + '2' + ('ram' if is_ram(second_task) else 'img')
+        self.task_num = task_num # 0: first_task, 1: second_task, 2: third_task(same as the first)
+        self.in_ram = is_ram(second_task) if self.task_num==1 else is_ram(first_task)
+        self.fc1_1_exist = False
+        self.fc4_1_exist = False
+        if self.f2s == 'ram2ram':
+            if self.first_in_channels == in_channels:
+                self.fc1 = GLinear(self.first_in_channels, 512, module_list=[first_model.fc1])
+            else:
+                self.fc1 = GLinear(self.first_in_channels, 512, module_list=[first_model.fc1], no_grow=no_grow)
+                self.fc1_1 = GLinear(in_channels, 512)
+                self.fc1_1_exist = True
+            self.fc2 = GLinear(512, 256, module_list=[first_model.fc2])
+            self.fc3 = GLinear(256, 128, module_list=[first_model.fc3])
+            if self.first_out_channels == out_channels:
+                self.fc4 = GLinear(128, self.first_out_channels, module_list=[first_model.fc4])
+            else: 
+                self.fc4 = GLinear(128, self.first_out_channels, module_list=[first_model.fc4], no_grow=no_grow)
+                self.fc4_1 = GLinear(128, out_channels)
+                self.fc4_1_exist = True
+        elif self.f2s == 'ram2img': 
+            self.conv1 = Gconv2d(in_channels, 32, kernel_size=8, stride=4)
+            self.conv2 = Gconv2d(32, 64, kernel_size=4, stride=2)
+            self.conv3 = Gconv2d(64, 64, kernel_size=3, stride=1)
+            if self.first_in_channels == self.linear_size:
+                self.fc1 = GLinear(self.first_in_channels, 512, module_list=[first_model.fc1])
+            else:
+                self.fc1 = GLinear(self.first_in_channels, 512, module_list=[first_model.fc1], no_grow=no_grow)
+                self.fc1_1 = GLinear(self.linear_size, 512)
+                self.fc1_1_exist = True
+            self.fc2 = GLinear(512, 256, module_list=[first_model.fc2])
+            self.fc3 = GLinear(256, 128, module_list=[first_model.fc3])
+            if self.first_out_channels == out_channels:
+                self.fc4 = GLinear(128, self.first_out_channels, module_list=[first_model.fc4])
+            else: 
+                self.fc4 = GLinear(128, self.first_out_channels, module_list=[first_model.fc4], no_grow=no_grow)
+                self.fc4_1 = GLinear(128, out_channels)
+                self.fc4_1_exist = True
+        elif self.f2s == 'img2ram':
+            self.conv1 = Gconv2d(in_channels, 32, kernel_size=8, stride=4, 
+                module_list=[first_model.conv1], no_grow=no_grow)
+            self.conv2 = Gconv2d(32, 64, kernel_size=4, stride=2, 
+                module_list=[first_model.conv2], no_grow=no_grow)
+            self.conv3 = Gconv2d(64, 64, kernel_size=3, stride=1, 
+                module_list=[first_model.conv3], no_grow=no_grow)
+            if self.linear_size == in_channels:
+                self.fc1 = GLinear(self.linear_size, 512, module_list=[first_model.fc1])
+            else:
+                self.fc1 = GLinear(self.linear_size, 512, module_list=[first_model.fc1], no_grow=no_grow)
+                self.fc1_1 = GLinear(in_channels, 512)
+                self.fc1_1_exist = True
+            self.fc2 = GLinear(512, 256, module_list=[first_model.fc2])
+            self.fc3 = GLinear(256, 128, module_list=[first_model.fc3])
+            if self.first_out_channels == out_channels:
+                self.fc4 = GLinear(128, self.first_out_channels, module_list=[first_model.fc4])
+            else: 
+                self.fc4 = GLinear(128, self.first_out_channels, module_list=[first_model.fc4], no_grow=no_grow)
+                self.fc4_1 = GLinear(128, out_channels)
+                self.fc4_1_exist = True
+        elif self.f2s == 'img2img':
+            self.conv1 = Gconv2d(in_channels, 32, kernel_size=8, stride=4, 
+                module_list=[first_model.conv1])
+            self.conv2 = Gconv2d(32, 64, kernel_size=4, stride=2, 
+                module_list=[first_model.conv2])
+            self.conv3 = Gconv2d(64, 64, kernel_size=3, stride=1, 
+                module_list=[first_model.conv3])
+            self.fc1 = GLinear(self.linear_size, 512, module_list=[first_model.fc1])
+            self.fc2 = GLinear(512, 256, module_list=[first_model.fc2])
+            self.fc3 = GLinear(256, 128, module_list=[first_model.fc3])
+            if self.first_out_channels == out_channels:
+                self.fc4 = GLinear(128, self.first_out_channels, module_list=[first_model.fc4])
+            else: 
+                self.fc4 = GLinear(128, self.first_out_channels, module_list=[first_model.fc4], no_grow=no_grow)
+                self.fc4_1 = GLinear(128, out_channels)
+                self.fc4_1_exist = True
 
     def forward(self, x):
-        x = x / 255.
-        x = F.relu(self.conv1(x))
-        x = F.relu(self.conv2(x))
-        x = F.relu(self.conv3(x))
-        x = x.reshape(x.size(0), -1)
-
-        adv = F.relu(self.fc1(x))
+        if not self.in_ram:
+            x = x / 255.
+            x = F.relu(self.conv1(x))
+            x = F.relu(self.conv2(x))
+            x = F.relu(self.conv3(x))
+            x = x.reshape(x.size(0), -1)
+        if self.fc1_1_exist:
+            adv = F.relu(self.fc1_1(x))
+        else:
+            adv = F.relu(self.fc1(x))
         adv = F.relu(self.fc2(adv))
         adv = F.relu(self.fc3(adv))
-        adv = self.fc4(adv)
+        if self.fc4_1_exist:
+            adv = self.fc4_1(adv)
+        else:
+            adv = self.fc4(adv)
         return adv
+
+    def is_ram(self, task_name):
+        return '-ram' in task_name
+
+    def reset_alpha(self):
+        if not in_ram:
+            self.conv1.reset_alpha()
+            self.conv2.reset_alpha()
+            self.conv3.reset_alpha()
+        if not self.fc1_1_exist: self.fc1.reset_alpha()
+        self.fc2.reset_alpha()
+        self.fc3.reset_alpha()
+        if not self.fc4_1_exist: self.fc4.reset_alpha()
 
 
 class Action_log():
