@@ -310,23 +310,24 @@ class GLinear(nn.Module):
                 requires_grad=True)
 
 class GNet(nn.Module):
-    def __init__(self, in_channels, out_channels, first_task, first_model, second_task, no_grow=False,
+    def __init__(self, in_channels, out_channels, first_task, first_model, second_task, no_grow=True,
          high_reso=False, task_num = 1):
         super(GNet, self).__init__()
         self.linear_size = 7 * 7 * 64 if not high_reso else 12 * 12 * 64
+        self.in_ram = is_ram(second_task) if self.task_num==1 else is_ram(first_task)
+        self.no_grow = no_grow
         self.first_task = make_atari_ram(first_task) if is_ram(first_task) else make_atari(first_task)
         self.first_in_channels = self.first_task.observation_space.shape[0]
         self.first_out_channels = self.first_task.action_space.n
         self.f2s = ('ram' if is_ram(first_task) else 'img') + '2' + ('ram' if is_ram(second_task) else 'img')
         self.task_num = task_num # 0: first_task, 1: second_task, 2: third_task(same as the first)
-        self.in_ram = is_ram(second_task) if self.task_num==1 else is_ram(first_task)
         self.fc1_1_exist = False
         self.fc4_1_exist = False
         if self.f2s == 'ram2ram':
             if self.first_in_channels == in_channels:
                 self.fc1 = GLinear(self.first_in_channels, 512, module_list=[first_model.fc1])
             else:
-                self.fc1 = GLinear(self.first_in_channels, 512, module_list=[first_model.fc1], no_grow=no_grow)
+                self.fc1 = GLinear(self.first_in_channels, 512, module_list=[first_model.fc1], no_grow=self.no_grow)
                 self.fc1_1 = GLinear(in_channels, 512)
                 self.fc1_1_exist = True
             self.fc2 = GLinear(512, 256, module_list=[first_model.fc2])
@@ -334,7 +335,7 @@ class GNet(nn.Module):
             if self.first_out_channels == out_channels:
                 self.fc4 = GLinear(128, self.first_out_channels, module_list=[first_model.fc4])
             else: 
-                self.fc4 = GLinear(128, self.first_out_channels, module_list=[first_model.fc4], no_grow=no_grow)
+                self.fc4 = GLinear(128, self.first_out_channels, module_list=[first_model.fc4], no_grow=self.no_grow)
                 self.fc4_1 = GLinear(128, out_channels)
                 self.fc4_1_exist = True
         elif self.f2s == 'ram2img': 
@@ -344,7 +345,7 @@ class GNet(nn.Module):
             if self.first_in_channels == self.linear_size:
                 self.fc1 = GLinear(self.first_in_channels, 512, module_list=[first_model.fc1])
             else:
-                self.fc1 = GLinear(self.first_in_channels, 512, module_list=[first_model.fc1], no_grow=no_grow)
+                self.fc1 = GLinear(self.first_in_channels, 512, module_list=[first_model.fc1], no_grow=self.no_grow)
                 self.fc1_1 = GLinear(self.linear_size, 512)
                 self.fc1_1_exist = True
             self.fc2 = GLinear(512, 256, module_list=[first_model.fc2])
@@ -352,20 +353,20 @@ class GNet(nn.Module):
             if self.first_out_channels == out_channels:
                 self.fc4 = GLinear(128, self.first_out_channels, module_list=[first_model.fc4])
             else: 
-                self.fc4 = GLinear(128, self.first_out_channels, module_list=[first_model.fc4], no_grow=no_grow)
+                self.fc4 = GLinear(128, self.first_out_channels, module_list=[first_model.fc4], no_grow=self.no_grow)
                 self.fc4_1 = GLinear(128, out_channels)
                 self.fc4_1_exist = True
         elif self.f2s == 'img2ram':
             self.conv1 = Gconv2d(in_channels, 32, kernel_size=8, stride=4, 
-                module_list=[first_model.conv1], no_grow=no_grow)
+                module_list=[first_model.conv1], no_grow=self.no_grow)
             self.conv2 = Gconv2d(32, 64, kernel_size=4, stride=2, 
-                module_list=[first_model.conv2], no_grow=no_grow)
+                module_list=[first_model.conv2], no_grow=self.no_grow)
             self.conv3 = Gconv2d(64, 64, kernel_size=3, stride=1, 
-                module_list=[first_model.conv3], no_grow=no_grow)
+                module_list=[first_model.conv3], no_grow=self.no_grow)
             if self.linear_size == in_channels:
                 self.fc1 = GLinear(self.linear_size, 512, module_list=[first_model.fc1])
             else:
-                self.fc1 = GLinear(self.linear_size, 512, module_list=[first_model.fc1], no_grow=no_grow)
+                self.fc1 = GLinear(self.linear_size, 512, module_list=[first_model.fc1], no_grow=self.no_grow)
                 self.fc1_1 = GLinear(in_channels, 512)
                 self.fc1_1_exist = True
             self.fc2 = GLinear(512, 256, module_list=[first_model.fc2])
@@ -373,7 +374,7 @@ class GNet(nn.Module):
             if self.first_out_channels == out_channels:
                 self.fc4 = GLinear(128, self.first_out_channels, module_list=[first_model.fc4])
             else: 
-                self.fc4 = GLinear(128, self.first_out_channels, module_list=[first_model.fc4], no_grow=no_grow)
+                self.fc4 = GLinear(128, self.first_out_channels, module_list=[first_model.fc4], no_grow=self.no_grow)
                 self.fc4_1 = GLinear(128, out_channels)
                 self.fc4_1_exist = True
         elif self.f2s == 'img2img':
@@ -389,7 +390,7 @@ class GNet(nn.Module):
             if self.first_out_channels == out_channels:
                 self.fc4 = GLinear(128, self.first_out_channels, module_list=[first_model.fc4])
             else: 
-                self.fc4 = GLinear(128, self.first_out_channels, module_list=[first_model.fc4], no_grow=no_grow)
+                self.fc4 = GLinear(128, self.first_out_channels, module_list=[first_model.fc4], no_grow=self.no_grow)
                 self.fc4_1 = GLinear(128, out_channels)
                 self.fc4_1_exist = True
 
@@ -400,13 +401,13 @@ class GNet(nn.Module):
             x = F.relu(self.conv2(x))
             x = F.relu(self.conv3(x))
             x = x.reshape(x.size(0), -1)
-        if self.fc1_1_exist:
+        if self.fc1_1_exist and self.task_num==1:
             adv = F.relu(self.fc1_1(x))
         else:
             adv = F.relu(self.fc1(x))
         adv = F.relu(self.fc2(adv))
         adv = F.relu(self.fc3(adv))
-        if self.fc4_1_exist:
+        if self.fc4_1_exist and self.task_num==1:
             adv = self.fc4_1(adv)
         else:
             adv = self.fc4(adv)
@@ -420,10 +421,10 @@ class GNet(nn.Module):
             self.conv1.reset_alpha()
             self.conv2.reset_alpha()
             self.conv3.reset_alpha()
-        if not self.fc1_1_exist: self.fc1.reset_alpha()
+        if not self.fc1_1_exist or not slef.no_grow: self.fc1.reset_alpha()
         self.fc2.reset_alpha()
         self.fc3.reset_alpha()
-        if not self.fc4_1_exist: self.fc4.reset_alpha()
+        if not self.fc4_1_exist or not slef.no_grow: self.fc4.reset_alpha()
 
 
 class Action_log():
@@ -482,6 +483,27 @@ def check_and_get(model_upath):
     if not os.path.exists(model_path):
         subprocess.call(f'scp {model_upath} {model_path}', shell=True)
 
+def make_env(env_name, high_reso, color, no_stack, eval_out=False):
+    is_ram = '-ram' in env_name
+    if is_ram:
+        env = make_atari_ram(env_name)
+        eval_env = make_atari_ram(env_name, clip_rewards=False)
+    else:
+        if high_reso:
+            env = make_atari(env_name, color=color,
+                                image_size=128, frame_stack=not no_stack)
+            eval_env = make_atari(
+                env_name, clip_rewards=False, color=cfg.color, image_size=128, frame_stack=not no_stack)
+        else:
+            env = make_atari(env_name, color=color,
+                                frame_stack=not no_stack)
+            eval_env = make_atari(
+                env_name, clip_rewards=False, color=color, frame_stack=not no_stack)
+    if eval_out:
+        return env, eval_env
+    else:
+        return env
+
 @hydra.main(config_name='config/atari_dqn_config.yaml')
 def main(cfg):
     set_seed(cfg.seed)
@@ -497,7 +519,6 @@ def main(cfg):
         mlflow.log_param('seed', cfg.seed)
         mlflow.log_param('gamma', cfg.gamma)
         mlflow.log_param('replay', cfg.replay_capacity)
-        mlflow.log_param('dueling', cfg.dueling)
         mlflow.log_param('prioritized', cfg.prioritized)
         # mlflow.log_param('color', cfg.color)
         # mlflow.log_param('high', cfg.high_reso)
@@ -505,58 +526,45 @@ def main(cfg):
         mlflow.log_param('nstep', cfg.nstep)
         mlflow.log_param('huber', cfg.huber)
         mlflow.log_param('net_version', cfg.net_version)
+        mlflow.log_param('task_num', cfg.task_num)
+        mlflow.log_param('no_grow', cfg.no_grow)
         mlflow.set_tag('env', cfg.env)
+        mlflow.set_tag('env1', cfg.env1)
         mlflow.set_tag('commitid', get_commitid())
         mlflow.set_tag('machine', os.uname()[1])
+        mlflow.set_tag('load', cfg.load)
+        mlflow.set_tag('load1', cfg.load1)
 
         if not cfg.device:
             cfg.device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
-        is_ram = '-ram' in cfg.env
-        if is_ram:
-            env = make_atari_ram(cfg.env)
-            eval_env = make_atari_ram(cfg.env, clip_rewards=False)
-        else:
-            if cfg.high_reso:
-                env = make_atari(cfg.env, color=cfg.color,
-                                 image_size=128, frame_stack=not cfg.no_stack)
-                eval_env = make_atari(
-                    cfg.env, clip_rewards=False, color=cfg.color, image_size=128, frame_stack=not cfg.no_stack)
-            else:
-                env = make_atari(cfg.env, color=cfg.color,
-                                 frame_stack=not cfg.no_stack)
-                eval_env = make_atari(
-                    cfg.env, clip_rewards=False, color=cfg.color, frame_stack=not cfg.no_stack)
+        env_name = cfg.env1 if cfg.task_num==1 else cfg.env
+        env, eval_env = make_env(env_name, cfg.high_reso, cfg.color, cfg.no_stack, eval_out=True)
 
         env.seed(cfg.seed)
         eval_env.seed(cfg.seed)
 
-        dim_state = env.observation_space.shape[0]
-        dim_action = env.action_space.n
-
+        first_env = make_env(cfg.env, cfg.high_reso, cfg.color, cfg.no_stack, eval_out=False)
+        first_state = first_env.observation_space.shape[0]
+        first_action = first_env.action_space.n
         if is_ram:
-            if cfg.net_version==0:
-                q_func = RamNet(dim_state, dim_action)
-            elif cfg.net_version==1:
-                q_func = RamNet_1(dim_state, dim_action)
-            elif cfg.net_version==2:
-                q_func = RamNet_2(dim_state, dim_action)
-            else: raise IndexError('net_version in [0,2]')
+            first_model = RamNet_2(first_state, first_action)
         else:
-            if cfg.net_version==0:
-                q_func = Net(dim_state, dim_action,
-                         dueling=cfg.dueling, high_reso=cfg.high_reso)
-            elif cfg.net_version==1:
-                q_func = Net_1(dim_state, dim_action,
-                         dueling=cfg.dueling, high_reso=cfg.high_reso)
-            elif cfg.net_version==2:
-                q_func = Net_2(dim_state, dim_action,
-                         dueling=cfg.dueling, high_reso=cfg.high_reso)
-            else: raise IndexError('net_version in [0,1]')
-
+            first_model = Net_2(first_state, first_action, high_reso=cfg.high_reso)
+        check_and_get(cfg.load)
         if cfg.load:
-            q_func.load_state_dict(torch.load(os.path.join(
-                cwd, cfg.load), map_location=cfg.device))
+            first_model.load_state_dict(torch.load(cfg.load.split(':')[-1]), map_location=cfg.device))
+
+        second_env = make_env(cfg.env1, cfg.high_reso, cfg.color, cfg.no_stack, eval_out=False)
+        second_state = second_env.observation_space.shape[0]
+        second_action = second_env.action_space.n
+
+        q_func = GNet(second_state, second_action, cfg.env, first_model, cfg.env1, no_grow=cfg.no_grow, 
+            high_reso=cfg.high_reso, task_num=cfg.task_num)
+
+        if cfg.load1:
+            check_and_get(cfg.load1)
+            q_func.load_state_dict(torch.load(cfg.load1.split(':')[-1]), map_location=cfg.device))
 
         optimizer = optim.RMSprop(
             q_func.parameters(), lr=0.00025, alpha=0.95, eps=1e-2)
