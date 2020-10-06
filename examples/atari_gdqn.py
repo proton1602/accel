@@ -173,8 +173,12 @@ class RamNet_2(nn.Module):
 
 
 class Linear_hold(nn.Linear):
-    def __init__(self, in_features: int, out_features: int, bias: bool = True) -> None:
+    def __init__(self, in_features: int, out_features: int, bias: bool = True, load_model=None) -> None:
         super(Linear_hold, self).__init__(in_features, out_features, bias)
+        self.out = None
+        if load_model is not None:
+            self.weight.data = load_model.weight.data
+            self.bias.data = load_model.bias.data
     def forward(self, input: torch.Tensor) -> torch.Tensor:
         self.out = F.linear(input, self.weight, self.bias)
         return self.out
@@ -182,11 +186,13 @@ class Linear_hold(nn.Linear):
 class Conv2d_hold(nn.Conv2d):
     def __init__(self,in_channels: int, out_channels: int, kernel_size,
         stride = 1, padding = 0, dilation = 1, groups: int = 1,
-        bias: bool = True, padding_mode: str = 'zeros'):
+        bias: bool = True, padding_mode: str = 'zeros', load_model=None):
         super(Conv2d_hold, self).__init__(in_channels, out_channels, kernel_size, stride,
             padding, dilation, groups, bias, padding_mode)
         self.out = None
-
+        if load_model is not None:
+            self.weight.data = load_model.weight.data
+            self.bias.data = load_model.bias.data
     def forward(self, input: torch.Tensor) -> torch.Tensor:
         self.out = self._conv_forward(input, self.weight)
         return self.out
@@ -241,10 +247,12 @@ class GConv2d(nn.Module):
         self.LinearDict = nn.ModuleDict()
         self.key_list = [] # Guarantee the order
         for i, module in enumerate(module_list):
-            self.LinearDict[f'reuse{i}'] = module
+            self.LinearDict[f'reuse{i}'] = Conv2d_hold(in_channels, out_channels, 
+                kernel_size, stride=stride, load_model=module)
             self.key_list.append(f'reuse{i}')
-        for i, module in enumerate(module_list):
-            self.LinearDict[f'adapt{i}'] = AdaptC(module, i, in_channels, out_channels, self)
+        for i in range(len(module_list)):
+            self.LinearDict[f'adapt{i}'] = AdaptC(self.LinearDict[f'reuse{i}'], i,
+                in_channels, out_channels, self)
             self.key_list.append(f'adapt{i}')
         self.LinearDict['new'] = Conv2d_hold(in_channels, out_channels, kernel_size, stride=stride)
         self.key_list.append('new')
@@ -255,12 +263,14 @@ class GConv2d(nn.Module):
             bound = 1 / math.sqrt(self.len)
             self.alpha = nn.Parameter(nn.init.uniform_(torch.empty(self.len), -bound, bound),
                 requires_grad=True)
+        self.softmax = nn.Softmax()
 
     def forward(self, x, phase):
         self.phase = phase
         self.out = torch.zeros(1)
+        softmax_alpha = self.softmax(self.alpha)
         for i, key in enumerate(self.key_list):
-            self.out += self.LinearDict[key](x) * self.alpha[i]
+            self.out += self.LinearDict[key](x) * softmax_alpha[i]
         return self.out
     
     def reset_alpha(self):
@@ -278,11 +288,12 @@ class GLinear(nn.Module):
         self.LinearDict = nn.ModuleDict()
         self.key_list = [] # Guarantee the order
         for i, module in enumerate(module_list):
-            self.LinearDict[f'reuse{i}'] = module
+            self.LinearDict[f'reuse{i}'] = Linear_hold(in_channels, out_channels, load_model=module)
             self.key_list.append(f'reuse{i}')
         if not no_grow:
-            for i, module in enumerate(module_list):
-                self.LinearDict[f'adapt{i}'] = AdaptL(module, i, in_channels, out_channels, self)
+            for i in range(len(module_list)):
+                self.LinearDict[f'adapt{i}'] = AdaptL(self.LinearDict[f'reuse{i}'], i, 
+                    in_channels, out_channels, self)
                 self.key_list.append(f'adapt{i}')
             self.LinearDict['new'] = Linear_hold(in_channels, out_channels)
             self.key_list.append('new')
@@ -293,12 +304,14 @@ class GLinear(nn.Module):
             bound = 1 / math.sqrt(self.len)
             self.alpha = nn.Parameter(nn.init.uniform_(torch.empty(self.len), -bound, bound),
                 requires_grad=True)
+        self.softmax = nn.Softmax()
 
     def forward(self, x, phase):
         self.phase = phase
         self.out = torch.zeros(1)
+        softmax_alpha = self.softmax(self.alpha)
         for i, key in enumerate(self.key_list):
-            self.out += self.LinearDict[key](x) * self.alpha[i]
+            self.out += self.LinearDict[key](x) * softmax_alpha[i]
         return self.out
     
     def reset_alpha(self):
