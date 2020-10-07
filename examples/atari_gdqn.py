@@ -565,7 +565,7 @@ def main(cfg):
         mlflow.set_tag('machine', os.uname()[1])
         cfg.load = getpass.getuser() + '@' + cfg.load_m + ':' + cfg.load
         mlflow.set_tag('load', cfg.load)
-        cfg.load1 = getpass.getuser() + '@' + cfg.load1_m + ':' + cfg.load1 if cfg.load1 else: cfg.load1
+        cfg.load1 = getpass.getuser() + '@' + cfg.load1_m + ':' + cfg.load1 if cfg.load1 else cfg.load1
         mlflow.set_tag('load1', cfg.load1)
 
         if not cfg.device:
