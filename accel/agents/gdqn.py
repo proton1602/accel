@@ -159,7 +159,7 @@ class GDQN:
         return float(loss.to('cpu').detach().numpy().copy())
 
 
-class GDoubleDQN(DQN):
+class GDoubleDQN(GDQN):
     def next_state_value(self, next_states):
         next_action_batch = self.q_func(next_states).max(1)[
             1].unsqueeze(1)
