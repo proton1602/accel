@@ -184,7 +184,6 @@ class GConv2d(nn.Module):
             bound = 1 / math.sqrt(self.len)
             self.alpha = nn.Parameter(nn.init.uniform_(torch.empty(self.len), -bound, bound),
                 requires_grad=True)
-        self.softmax = nn.Softmax(dim=-1)
         self.phase = nn.Parameter(torch.tensor([2.]), requires_grad=False)
         self.phase_dict = {'struct':1, 'param':2}
 
@@ -192,7 +191,7 @@ class GConv2d(nn.Module):
         self.phase.data = self.phase*0 + self.phase_dict[phase]
         self.out = None
         if self.phase == 1:
-            softmax_alpha = self.softmax(self.alpha)
+            softmax_alpha = nn.functional.softmax(self.alpha, dim=-1)
             for i, key in enumerate(self.key_list):
                 if self.out is None:
                     self.out = self.LinearDict[key](x) * softmax_alpha[i]
@@ -204,7 +203,7 @@ class GConv2d(nn.Module):
 
     def param_loss(self):
         self.param_loss_out = torch.zeros(1)
-        softmax_alpha = self.softmax(self.alpha)
+        softmax_alpha = nn.functional.softmax(self.alpha, dim=-1)
         for i, key in enumerate(self.key_list):
             if not 'reuse' in key and self.len != 1:
                 self.param_loss_out += self.LinearDict[key].size * softmax_alpha[i]
@@ -242,7 +241,6 @@ class GLinear(nn.Module):
             bound = 1 / math.sqrt(self.len)
             self.alpha = nn.Parameter(nn.init.uniform_(torch.empty(self.len), -bound, bound),
                 requires_grad=True)
-        self.softmax = nn.Softmax(dim=-1)
         self.phase = nn.Parameter(torch.tensor([2.]), requires_grad=False)
         self.phase_dict = {'struct':1, 'param':2}
 
@@ -250,7 +248,7 @@ class GLinear(nn.Module):
         self.phase.data = self.phase*0 + self.phase_dict[phase]
         self.out = None
         if self.phase == 1:
-            softmax_alpha = self.softmax(self.alpha)
+            softmax_alpha = nn.functional.softmax(self.alpha, dim=-1)
             for i, key in enumerate(self.key_list):
                 if self.out is None:
                     self.out = self.LinearDict[key](x) * softmax_alpha[i]
@@ -262,7 +260,7 @@ class GLinear(nn.Module):
 
     def param_loss(self):
         self.param_loss_out = torch.zeros(1)
-        softmax_alpha = self.softmax(self.alpha)
+        softmax_alpha = nn.functional.softmax(self.alpha, dim=-1)
         for i, key in enumerate(self.key_list):
             if not 'reuse' in key and self.len != 1:
                 self.param_loss_out += self.LinearDict[key].size * softmax_alpha[i]
