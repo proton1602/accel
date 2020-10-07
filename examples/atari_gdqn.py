@@ -19,7 +19,7 @@ from accel.utils.atari_wrappers import make_atari, make_atari_ram
 from accel.explorers import epsilon_greedy
 from accel.replay_buffers.replay_buffer import Transition, ReplayBuffer
 from accel.replay_buffers.prioritized_replay_buffer import PrioritizedReplayBuffer
-from accel.agents import dqn
+from accel.agents import gdqn
 from accel.utils.utils import set_seed
 
 
@@ -78,17 +78,6 @@ class RamNet_2(nn.Module):
         return self.fc4(x)
 
 
-class Linear_hold(nn.Linear):
-    def __init__(self, in_features: int, out_features: int, bias: bool = True, load_model=None) -> None:
-        super(Linear_hold, self).__init__(in_features, out_features, bias)
-        self.out = None
-        if load_model is not None:
-            self.weight.data = load_model.weight.data
-            self.bias.data = load_model.bias.data
-    def forward(self, input: torch.Tensor) -> torch.Tensor:
-        self.out = F.linear(input, self.weight, self.bias)
-        return self.out
-
 class Conv2d_hold(nn.Conv2d):
     def __init__(self,in_channels: int, out_channels: int, kernel_size,
         stride = 1, padding = 0, dilation = 1, groups: int = 1,
@@ -99,9 +88,28 @@ class Conv2d_hold(nn.Conv2d):
         if load_model is not None:
             self.weight.data = load_model.weight.data
             self.bias.data = load_model.bias.data
+        self.size = self.weight.numel() + self.bias.numel()
+        self.size = math.log2(self.size)
+
     def forward(self, input: torch.Tensor) -> torch.Tensor:
         self.out = self._conv_forward(input, self.weight)
         return self.out
+
+
+class Linear_hold(nn.Linear):
+    def __init__(self, in_features: int, out_features: int, bias: bool = True, load_model=None) -> None:
+        super(Linear_hold, self).__init__(in_features, out_features, bias)
+        self.out = None
+        if load_model is not None:
+            self.weight.data = load_model.weight.data
+            self.bias.data = load_model.bias.data
+        self.size = self.weight.numel() + self.bias.numel()
+        self.size = math.log2(self.size)
+
+    def forward(self, input: torch.Tensor) -> torch.Tensor:
+        self.out = F.linear(input, self.weight, self.bias)
+        return self.out
+
 
 class AdaptC(nn.Module):
     def __init__(self, main_link, main_index, input_size, output_size, paramset):
@@ -113,8 +121,10 @@ class AdaptC(nn.Module):
         self.index = main_index
         self.sub = nn.Conv2d(output_size, output_size, kernel_size=1, stride=1)
         self.out = None
+        self.size = self.sub.weight.numel() + self.sub.bias.numel()
+        self.size = math.log2(self.size)
 
-    def __call__(self, x): 
+    def forward(self, x): 
         if self.paramset.phase == 2 or self.paramset.phase == 3:
             y = self.main(x)
             self.out = y + self.sub(y) 
@@ -134,8 +144,11 @@ class AdaptL(nn.Module):
         self.sub0 = nn.Linear(self.input_size, self.comp_size)
         self.sub1 = nn.Linear(self.comp_size, self.output_size)
         self.out = None
+        self.size = self.sub0.weight.numel() + self.sub0.bias.numel() +
+            self.sub1.weight.numel() + self.sub1.bias.numel()
+        self.size = math.log2(self.size)
 
-    def __call__(self, x): 
+    def forward(self, x): 
         comp_data = self.sub0(x)
         if self.paramset.phase == 2 or self.paramset.phase == 3:
             self.out = self.main(x) + self.sub1(comp_data) 
@@ -178,7 +191,15 @@ class GConv2d(nn.Module):
         for i, key in enumerate(self.key_list):
             self.out += self.LinearDict[key](x) * softmax_alpha[i]
         return self.out
-    
+
+    def param_loss(self):
+        self.param_loss_out = torch.zeros(1)
+        softmax_alpha = self.softmax(self.alpha)
+        for i, key in enumerate(self.key_list):
+            if not 'reuse' in key and self.len != 1:
+                self.param_loss_out += self.LinearDict[key].size * softmax_alpha[i]
+        return self.param_loss_out
+
     def reset_alpha(self):
         if self.len == 1:
             self.alpha = nn.Parameter(torch.ones(1), requires_grad=False)
@@ -219,7 +240,15 @@ class GLinear(nn.Module):
         for i, key in enumerate(self.key_list):
             self.out += self.LinearDict[key](x) * softmax_alpha[i]
         return self.out
-    
+
+    def param_loss(self):
+        self.param_loss_out = torch.zeros(1)
+        softmax_alpha = self.softmax(self.alpha)
+        for i, key in enumerate(self.key_list):
+            if not 'reuse' in key and self.len != 1:
+                self.param_loss_out += self.LinearDict[key].size * softmax_alpha[i]
+        return self.param_loss_out
+
     def reset_alpha(self):
         if self.len == 1:
             self.alpha = nn.Parameter(torch.ones(1), requires_grad=False)
@@ -334,6 +363,25 @@ class GNet(nn.Module):
 
     def is_ram(self, task_name):
         return '-ram' in task_name
+
+    def param_loss(self):
+        self.param_loss_out = torch.zeros(1)
+        softmax_alpha = self.softmax(self.alpha)
+        if not in_ram:
+            self.param_loss_out += self.conv1.param_loss()
+            self.param_loss_out += self.conv2.param_loss()
+            self.param_loss_out += self.conv3.param_loss()
+        if self.fc1_1_exist and self.task_num==1:
+            self.param_loss_out += self.fc1_1.param_loss()
+        else:
+            self.param_loss_out += self.fc1.param_loss()
+        self.param_loss_out += self.fc2.param_loss()
+        self.param_loss_out += self.fc3.param_loss()
+        if self.fc4_1_exist and self.task_num==1:
+            self.param_loss_out += self.fc4_1.param_loss()
+        else:
+            self.param_loss_out += self.fc4.param_loss()
+        return self.param_loss_out
 
     def reset_alpha(self):
         if not in_ram:
@@ -500,7 +548,7 @@ def main(cfg):
         explorer = epsilon_greedy.LinearDecayEpsilonGreedy(
             start_eps=1.0, end_eps=0.1, decay_steps=1e6)
 
-        agent = dqn.DoubleDQN(q_func, optimizer, memory, cfg.gamma,
+        agent = gdqn.DoubleDQN(q_func, optimizer, memory, cfg.gamma,
                               explorer, cfg.device, batch_size=32,
                               target_update_interval=10000,
                               replay_start_step=cfg.replay_start_step,
