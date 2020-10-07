@@ -548,7 +548,7 @@ def main(cfg):
         explorer = epsilon_greedy.LinearDecayEpsilonGreedy(
             start_eps=1.0, end_eps=0.1, decay_steps=1e6)
 
-        agent = gdqn.DoubleDQN(q_func, optimizer, memory, cfg.gamma,
+        agent = gdqn.GDoubleDQN(q_func, optimizer, memory, cfg.gamma,
                               explorer, cfg.device, batch_size=32,
                               target_update_interval=10000,
                               replay_start_step=cfg.replay_start_step,

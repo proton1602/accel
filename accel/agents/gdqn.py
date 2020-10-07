@@ -7,14 +7,15 @@ from accel.replay_buffers.replay_buffer import Transition
 from accel.replay_buffers.prioritized_replay_buffer import PrioritizedReplayBuffer
 
 
-class DQN:
+class GDQN:
     def __init__(self, q_func, optimizer, replay_buffer, gamma, explorer,
                  device,
                  batch_size=32,
                  update_interval=4,
                  target_update_interval=200,
                  replay_start_step=10000,
-                 huber=False):
+                 huber=False,
+                 param_coef=1e-5):
         self.q_func = q_func.to(device)
         self.target_q_func = copy.deepcopy(self.q_func).to(device)
         self.optimizer = optimizer
@@ -27,6 +28,7 @@ class DQN:
         self.update_interval = update_interval
         self.target_update_interval = target_update_interval
         self.huber = huber
+        self.param_coef = param_coef
         self.total_steps = 0
         self.replay_start_step = replay_start_step
 
@@ -128,6 +130,7 @@ class DQN:
             else:
                 loss = F.mse_loss(state_action_values,
                                   expected_state_action_values.unsqueeze(1))
+        loss += self.param_coef * self.q_func.param_loss()
 
         self.optimizer.zero_grad()
         loss.backward()
@@ -141,7 +144,7 @@ class DQN:
         return float(loss.to('cpu').detach().numpy().copy())
 
 
-class DoubleDQN(DQN):
+class GDoubleDQN(DQN):
     def next_state_value(self, next_states):
         next_action_batch = self.q_func(next_states).max(1)[
             1].unsqueeze(1)
