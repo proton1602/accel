@@ -475,6 +475,11 @@ class Action_log():
         else:
             return action_len + '; ' + action_count
 
+def act_value_log(action, action_value):
+    act_str = str(action)
+    act_mean_str = str(action_value.mean().to('cpu').detach().numpy().copy())
+    act_max_str = str(action_value.max().to('cpu').detach().numpy().copy())
+    return act_str + ', ' + act_mean_str + ', ' + act_max_str
 
 def get_commitid():
     # return short commit id
