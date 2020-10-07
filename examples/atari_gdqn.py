@@ -23,72 +23,6 @@ from accel.agents import dqn
 from accel.utils.utils import set_seed
 
 
-class Net(nn.Module):
-    def __init__(self, input, output, dueling=False, high_reso=False):
-        super().__init__()
-        self.dueling = dueling
-        self.conv1 = nn.Conv2d(input, 32, kernel_size=8, stride=4)
-        self.conv2 = nn.Conv2d(32, 64, kernel_size=4, stride=2)
-        self.conv3 = nn.Conv2d(64, 64, kernel_size=3, stride=1)
-
-        linear_size = 7 * 7 * 64 if not high_reso else 12 * 12 * 64
-        self.fc1 = nn.Linear(linear_size, 512)
-        self.fc2 = nn.Linear(512, output)
-        if self.dueling:
-            self.v_fc1 = nn.Linear(linear_size, 512)
-            self.v_fc2 = nn.Linear(512, 1)
-
-    def forward(self, x):
-        x = x / 255.
-        x = F.relu(self.conv1(x))
-        x = F.relu(self.conv2(x))
-        x = F.relu(self.conv3(x))
-        x = x.reshape(x.size(0), -1)
-
-        adv = F.relu(self.fc1(x))
-        adv = self.fc2(adv)
-        if not self.dueling:
-            return adv
-
-        v = F.relu(self.v_fc1(x))
-        v = self.v_fc2(v)
-        return v + adv - adv.mean(dim=1, keepdim=True)
-
-class Net_1(nn.Module):
-    def __init__(self, input, output, dueling=False, high_reso=False):
-        super().__init__()
-        self.dueling = dueling
-        self.conv1 = nn.Conv2d(input, 32, kernel_size=8, stride=4)
-        self.conv2 = nn.Conv2d(32, 64, kernel_size=4, stride=2)
-        self.conv3 = nn.Conv2d(64, 64, kernel_size=3, stride=1)
-
-        linear_size = 7 * 7 * 64 if not high_reso else 12 * 12 * 64
-        self.fc1 = nn.Linear(linear_size, 512)
-        self.fc2 = nn.Linear(512, 128)
-        self.fc3 = nn.Linear(128, output)
-        if self.dueling:
-            self.v_fc1 = nn.Linear(linear_size, 512)
-            self.v_fc2 = nn.Linear(512, 128)
-            self.v_fc3 = nn.Linear(128, 1)
-
-    def forward(self, x):
-        x = x / 255.
-        x = F.relu(self.conv1(x))
-        x = F.relu(self.conv2(x))
-        x = F.relu(self.conv3(x))
-        x = x.reshape(x.size(0), -1)
-
-        adv = F.relu(self.fc1(x))
-        adv = F.relu(self.fc2(adv))
-        adv = self.fc3(adv)
-        if not self.dueling:
-            return adv
-
-        v = F.relu(self.v_fc1(x))
-        v = F.relu(self.v_fc2(v))
-        v = self.v_fc3(v)
-        return v + adv - adv.mean(dim=1, keepdim=True)
-
 class Net_2(nn.Module):
     def __init__(self, input, output, dueling=False, high_reso=False):
         super().__init__()
@@ -127,34 +61,6 @@ class Net_2(nn.Module):
         v = F.relu(self.v_fc3(v))
         v = self.v_fc4(v)
         return v + adv - adv.mean(dim=1, keepdim=True)
-
-
-class RamNet(nn.Module):
-    def __init__(self, input, output):
-        super().__init__()
-        self.fc1 = nn.Linear(input, 256)
-        self.fc2 = nn.Linear(256, 128)
-        self.fc3 = nn.Linear(128, 64)
-        self.fc4 = nn.Linear(64, output)
-
-    def forward(self, x):
-        x = F.relu(self.fc1(x))
-        x = F.relu(self.fc2(x))
-        x = F.relu(self.fc3(x))
-        return self.fc4(x)
-
-
-class RamNet_1(nn.Module):
-    def __init__(self, input, output):
-        super().__init__()
-        self.fc1 = nn.Linear(input, 512)
-        self.fc2 = nn.Linear(512, 128)
-        self.fc3 = nn.Linear(128, output)
-
-    def forward(self, x):
-        x = F.relu(self.fc1(x))
-        x = F.relu(self.fc2(x))
-        return self.fc3(x)
 
 
 class RamNet_2(nn.Module):
