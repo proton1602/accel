@@ -585,7 +585,7 @@ def main(cfg):
         else:
             first_model = Net_2(first_state, first_action, high_reso=cfg.high_reso)
         local_model_path = check_and_get(cfg.load)
-        first_model.load_state_dict(torch.load(local_model_path), map_location=cfg.device)
+        first_model.load_state_dict(torch.load(local_model_path, map_location=cfg.device))
 
         second_env = make_env(cfg.env1, cfg.high_reso, cfg.color, cfg.no_stack, eval_out=False)
         second_state = second_env.observation_space.shape[0]
@@ -596,7 +596,7 @@ def main(cfg):
 
         if cfg.load1:
             local_model_path = check_and_get(cfg.load1)
-            q_func.load_state_dict(torch.load(local_model_path), map_location=cfg.device)
+            q_func.load_state_dict(torch.load(local_model_path, map_location=cfg.device))
 
         optimizer_struct = optim.RMSprop(
             q_func.struct_parameters(), lr=0.00025, alpha=0.95, eps=1e-2)
