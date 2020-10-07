@@ -668,15 +668,8 @@ def main(cfg):
         action_file_name = 'action.txt'
         act_value_file_name = 'action_value.txt'
         struct_file_name = 'struct.txt'
-        with open(model_file_name, 'a') as f: pass
-        with open(action_file_name, 'a') as f: pass
-        with open(act_value_file_name, 'a') as f: pass
         with open(struct_file_name, 'a') as f:
             f.write(q_func.struct_log(first_log=True) + '\n')
-        mlflow.log_artifact(model_file_name)
-        mlflow.log_artifact(action_file_name)
-        mlflow.log_artifact(act_value_file_name)
-        mlflow.log_artifact(struct_file_name)
         best_score = -1e10
 
         while agent.total_steps < cfg.steps:
@@ -776,7 +769,7 @@ def main(cfg):
         machine_name = os.uname()[1]
         with open(model_file_name, 'a') as f:
             f.write(user_name + '@' + machine_name + ':' + model_name+'\n')
-        # mlflow.log_artifact(model_file_name)
+        mlflow.log_artifact(model_file_name)
 
         now = time()
         elapsed = now - train_start_time
@@ -789,14 +782,16 @@ def main(cfg):
 
         with open(action_file_name, 'a') as f:
             f.write(action_log.log() + '\n')
-        # mlflow.log_artifact(action_file_name)
+        mlflow.log_artifact(action_file_name)
 
         with open(act_value_file_name, 'a') as f:
             f.write(act_value_log(action, action_value) + '\n')
-        # mlflow.log_artifact(act_value_file_name)
+        mlflow.log_artifact(act_value_file_name)
 
         with open(struct_file_name, 'a') as f:
             f.write(q_func.struct_log() + '\n')
+        mlflow.log_artifact(struct_file_name)
+
 
         duration = np.round(elapsed / 60 / 60, 2)
         mlflow.log_metric('duration', duration)
