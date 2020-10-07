@@ -202,11 +202,14 @@ class GConv2d(nn.Module):
         return self.out
 
     def param_loss(self):
-        self.param_loss_out = torch.zeros(1)
+        self.param_loss_out = 0
         softmax_alpha = nn.functional.softmax(self.alpha, dim=-1)
         for i, key in enumerate(self.key_list):
             if not 'reuse' in key and self.len != 1:
-                self.param_loss_out += self.LinearDict[key].size * softmax_alpha[i]
+                if self.param_loss_out is 0:
+                    self.param_loss_out = self.LinearDict[key].size * softmax_alpha[i]
+                else:
+                    self.param_loss_out += self.LinearDict[key].size * softmax_alpha[i]
         return self.param_loss_out
 
     def reset_alpha(self):
@@ -259,11 +262,14 @@ class GLinear(nn.Module):
         return self.out
 
     def param_loss(self):
-        self.param_loss_out = torch.zeros(1)
+        self.param_loss_out = 0
         softmax_alpha = nn.functional.softmax(self.alpha, dim=-1)
         for i, key in enumerate(self.key_list):
             if not 'reuse' in key and self.len != 1:
-                self.param_loss_out += self.LinearDict[key].size * softmax_alpha[i]
+                if self.param_loss_out is 0:
+                    self.param_loss_out = self.LinearDict[key].size * softmax_alpha[i]
+                else:
+                    self.param_loss_out += self.LinearDict[key].size * softmax_alpha[i]
         return self.param_loss_out
 
     def reset_alpha(self):
@@ -385,21 +391,21 @@ class GNet(nn.Module):
         return adv
 
     def param_loss(self):
-        self.param_loss_out = None
+        self.param_loss_out = 0
         if not self.in_ram:
-            if self.param_loss_out is None:
+            if self.param_loss_out is 0:
                 self.param_loss_out = self.conv1.param_loss()
             else:
                 self.param_loss_out += self.conv1.param_loss()
             self.param_loss_out += self.conv2.param_loss()
             self.param_loss_out += self.conv3.param_loss()
         if self.fc1_1_exist and self.task_num==1:
-            if self.param_loss_out is None:
+            if self.param_loss_out is 0:
                 self.param_loss_out = self.fc1_1.param_loss()
             else:
                 self.param_loss_out += self.fc1_1.param_loss()
         else:
-            if self.param_loss_out is None:
+            if self.param_loss_out is 0:
                 self.param_loss_out = self.fc1.param_loss()
             else:
                 self.param_loss_out += self.fc1.param_loss()
