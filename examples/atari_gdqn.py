@@ -144,7 +144,7 @@ class AdaptL(nn.Module):
         self.sub0 = nn.Linear(self.input_size, self.comp_size)
         self.sub1 = nn.Linear(self.comp_size, self.output_size)
         self.out = None
-        self.size = self.sub0.weight.numel() + self.sub0.bias.numel() +
+        self.size = self.sub0.weight.numel() + self.sub0.bias.numel() +\
             self.sub1.weight.numel() + self.sub1.bias.numel()
         self.size = math.log2(self.size)
 
@@ -520,7 +520,7 @@ def main(cfg):
             first_model = Net_2(first_state, first_action, high_reso=cfg.high_reso)
         check_and_get(cfg.load)
         if cfg.load:
-            first_model.load_state_dict(torch.load(cfg.load.split(':')[-1]), map_location=cfg.device))
+            first_model.load_state_dict(torch.load(cfg.load.split(':')[-1]), map_location=cfg.device)
 
         second_env = make_env(cfg.env1, cfg.high_reso, cfg.color, cfg.no_stack, eval_out=False)
         second_state = second_env.observation_space.shape[0]
@@ -531,7 +531,7 @@ def main(cfg):
 
         if cfg.load1:
             check_and_get(cfg.load1)
-            q_func.load_state_dict(torch.load(cfg.load1.split(':')[-1]), map_location=cfg.device))
+            q_func.load_state_dict(torch.load(cfg.load1.split(':')[-1]), map_location=cfg.device)
 
         optimizer = optim.RMSprop(
             q_func.parameters(), lr=0.00025, alpha=0.95, eps=1e-2)
