@@ -23,3 +23,6 @@ huber: True
 model_evacuation: True
 net_version: 2
 no_grow: True
+param_coef: 1e-5
+struct_retio: 1
+param_retio: 1

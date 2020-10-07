@@ -113,7 +113,7 @@ class Linear_hold(nn.Linear):
 
 class AdaptC(nn.Module):
     def __init__(self, main_link, main_index, input_size, output_size, paramset):
-        self.paramset = paramset
+        self.paramset_list = [paramset] # List to avoid being registered as a module
         super(AdaptC, self).__init__()
         self.input_size = input_size
         self.output_size = output_size
@@ -125,7 +125,7 @@ class AdaptC(nn.Module):
         self.size = math.log2(self.size)
 
     def forward(self, x): 
-        if self.paramset.phase == 2 or self.paramset.phase == 3:
+        if self.paramset_list[0].phase == 2:
             y = self.main(x)
             self.out = y + self.sub(y) 
         else:
@@ -134,7 +134,7 @@ class AdaptC(nn.Module):
 
 class AdaptL(nn.Module):
     def __init__(self, main_link, main_index, input_size, output_size, paramset, comp_rate=2**(-4)):
-        self.paramset = paramset
+        self.paramset_list = [paramset] # List to avoid being registered as a module
         super(AdaptL, self).__init__()
         self.input_size = input_size
         self.comp_size = self.floor(input_size*comp_rate)
@@ -150,7 +150,7 @@ class AdaptL(nn.Module):
 
     def forward(self, x): 
         comp_data = self.sub0(x)
-        if self.paramset.phase == 2 or self.paramset.phase == 3:
+        if self.paramset_list[0].phase == 2:
             self.out = self.main(x) + self.sub1(comp_data) 
         else:
             self.out = self.main.out + self.sub1(comp_data) 
@@ -161,7 +161,7 @@ class AdaptL(nn.Module):
 
 class GConv2d(nn.Module):
     def __init__(self, in_channels: int, out_channels: int, kernel_size, stride = 1,
-        module_list=[]):
+        module_list=[], no_grow=False):
         super(GConv2d, self).__init__()
         self.LinearDict = nn.ModuleDict()
         self.key_list = [] # Guarantee the order
@@ -169,12 +169,14 @@ class GConv2d(nn.Module):
             self.LinearDict[f'reuse{i}'] = Conv2d_hold(in_channels, out_channels, 
                 kernel_size, stride=stride, load_model=module)
             self.key_list.append(f'reuse{i}')
-        for i in range(len(module_list)):
-            self.LinearDict[f'adapt{i}'] = AdaptC(self.LinearDict[f'reuse{i}'], i,
-                in_channels, out_channels, self)
-            self.key_list.append(f'adapt{i}')
-        self.LinearDict['new'] = Conv2d_hold(in_channels, out_channels, kernel_size, stride=stride)
-        self.key_list.append('new')
+        if not no_grow:
+            for i in range(len(module_list)):
+                self.LinearDict[f'adapt{i}'] = AdaptC(self.LinearDict[f'reuse{i}'], i,
+                    in_channels, out_channels, self)
+                self.key_list.append(f'adapt{i}')
+        if len(module_list)==0 or not no_grow:
+            self.LinearDict['new'] = Conv2d_hold(in_channels, out_channels, kernel_size, stride=stride)
+            self.key_list.append('new')
         self.len = len(self.LinearDict)
         if self.len == 1:
             self.alpha = nn.Parameter(torch.ones(1), requires_grad=False)
@@ -182,14 +184,22 @@ class GConv2d(nn.Module):
             bound = 1 / math.sqrt(self.len)
             self.alpha = nn.Parameter(nn.init.uniform_(torch.empty(self.len), -bound, bound),
                 requires_grad=True)
-        self.softmax = nn.Softmax()
+        self.softmax = nn.Softmax(dim=-1)
+        self.phase = nn.Parameter(torch.tensor([2.]), requires_grad=False)
+        self.phase_dict = {'struct':1, 'param':2}
 
     def forward(self, x, phase):
-        self.phase = phase
-        self.out = torch.zeros(1)
-        softmax_alpha = self.softmax(self.alpha)
-        for i, key in enumerate(self.key_list):
-            self.out += self.LinearDict[key](x) * softmax_alpha[i]
+        self.phase.data = self.phase*0 + self.phase_dict[phase]
+        self.out = None
+        if self.phase == 1:
+            softmax_alpha = self.softmax(self.alpha)
+            for i, key in enumerate(self.key_list):
+                if self.out is None:
+                    self.out = self.LinearDict[key](x) * softmax_alpha[i]
+                else:
+                    self.out += self.LinearDict[key](x) * softmax_alpha[i]
+        elif self.phase == 2:
+            self.out = self.LinearDict[self.key_list[self.alpha.argmax()]](x)
         return self.out
 
     def param_loss(self):
@@ -222,6 +232,7 @@ class GLinear(nn.Module):
                 self.LinearDict[f'adapt{i}'] = AdaptL(self.LinearDict[f'reuse{i}'], i, 
                     in_channels, out_channels, self)
                 self.key_list.append(f'adapt{i}')
+        if len(module_list)==0 or not no_grow:
             self.LinearDict['new'] = Linear_hold(in_channels, out_channels)
             self.key_list.append('new')
         self.len = len(self.LinearDict)
@@ -231,14 +242,22 @@ class GLinear(nn.Module):
             bound = 1 / math.sqrt(self.len)
             self.alpha = nn.Parameter(nn.init.uniform_(torch.empty(self.len), -bound, bound),
                 requires_grad=True)
-        self.softmax = nn.Softmax()
+        self.softmax = nn.Softmax(dim=-1)
+        self.phase = nn.Parameter(torch.tensor([2.]), requires_grad=False)
+        self.phase_dict = {'struct':1, 'param':2}
 
     def forward(self, x, phase):
-        self.phase = phase
-        self.out = torch.zeros(1)
-        softmax_alpha = self.softmax(self.alpha)
-        for i, key in enumerate(self.key_list):
-            self.out += self.LinearDict[key](x) * softmax_alpha[i]
+        self.phase.data = self.phase*0 + self.phase_dict[phase]
+        self.out = None
+        if self.phase == 1:
+            softmax_alpha = self.softmax(self.alpha)
+            for i, key in enumerate(self.key_list):
+                if self.out is None:
+                    self.out = self.LinearDict[key](x) * softmax_alpha[i]
+                else:
+                    self.out += self.LinearDict[key](x) * softmax_alpha[i]
+        elif self.phase == 2:
+            self.out = self.LinearDict[self.key_list[self.alpha.argmax()]](x)
         return self.out
 
     def param_loss(self):
@@ -257,18 +276,20 @@ class GLinear(nn.Module):
             self.alpha = nn.Parameter(nn.init.uniform_(torch.empty(self.len), -bound, bound),
                 requires_grad=True)
 
+
 class GNet(nn.Module):
     def __init__(self, in_channels, out_channels, first_task, first_model, second_task, no_grow=True,
          high_reso=False, task_num = 1):
         super(GNet, self).__init__()
         self.linear_size = 7 * 7 * 64 if not high_reso else 12 * 12 * 64
+        self.task_num = task_num # 0: first_task, 1: second_task, 2: third_task(same as the first)
         self.in_ram = is_ram(second_task) if self.task_num==1 else is_ram(first_task)
         self.no_grow = no_grow
+        self.phase = 'param'
         self.first_task = make_atari_ram(first_task) if is_ram(first_task) else make_atari(first_task)
         self.first_in_channels = self.first_task.observation_space.shape[0]
         self.first_out_channels = self.first_task.action_space.n
         self.f2s = ('ram' if is_ram(first_task) else 'img') + '2' + ('ram' if is_ram(second_task) else 'img')
-        self.task_num = task_num # 0: first_task, 1: second_task, 2: third_task(same as the first)
         self.fc1_1_exist = False
         self.fc4_1_exist = False
         if self.f2s == 'ram2ram':
@@ -287,9 +308,9 @@ class GNet(nn.Module):
                 self.fc4_1 = GLinear(128, out_channels)
                 self.fc4_1_exist = True
         elif self.f2s == 'ram2img': 
-            self.conv1 = Gconv2d(in_channels, 32, kernel_size=8, stride=4)
-            self.conv2 = Gconv2d(32, 64, kernel_size=4, stride=2)
-            self.conv3 = Gconv2d(64, 64, kernel_size=3, stride=1)
+            self.conv1 = GConv2d(in_channels, 32, kernel_size=8, stride=4)
+            self.conv2 = GConv2d(32, 64, kernel_size=4, stride=2)
+            self.conv3 = GConv2d(64, 64, kernel_size=3, stride=1)
             if self.first_in_channels == self.linear_size:
                 self.fc1 = GLinear(self.first_in_channels, 512, module_list=[first_model.fc1])
             else:
@@ -305,11 +326,11 @@ class GNet(nn.Module):
                 self.fc4_1 = GLinear(128, out_channels)
                 self.fc4_1_exist = True
         elif self.f2s == 'img2ram':
-            self.conv1 = Gconv2d(in_channels, 32, kernel_size=8, stride=4, 
+            self.conv1 = GConv2d(in_channels, 32, kernel_size=8, stride=4, 
                 module_list=[first_model.conv1], no_grow=self.no_grow)
-            self.conv2 = Gconv2d(32, 64, kernel_size=4, stride=2, 
+            self.conv2 = GConv2d(32, 64, kernel_size=4, stride=2, 
                 module_list=[first_model.conv2], no_grow=self.no_grow)
-            self.conv3 = Gconv2d(64, 64, kernel_size=3, stride=1, 
+            self.conv3 = GConv2d(64, 64, kernel_size=3, stride=1, 
                 module_list=[first_model.conv3], no_grow=self.no_grow)
             if self.linear_size == in_channels:
                 self.fc1 = GLinear(self.linear_size, 512, module_list=[first_model.fc1])
@@ -326,11 +347,11 @@ class GNet(nn.Module):
                 self.fc4_1 = GLinear(128, out_channels)
                 self.fc4_1_exist = True
         elif self.f2s == 'img2img':
-            self.conv1 = Gconv2d(in_channels, 32, kernel_size=8, stride=4, 
+            self.conv1 = GConv2d(in_channels, 32, kernel_size=8, stride=4, 
                 module_list=[first_model.conv1])
-            self.conv2 = Gconv2d(32, 64, kernel_size=4, stride=2, 
+            self.conv2 = GConv2d(32, 64, kernel_size=4, stride=2, 
                 module_list=[first_model.conv2])
-            self.conv3 = Gconv2d(64, 64, kernel_size=3, stride=1, 
+            self.conv3 = GConv2d(64, 64, kernel_size=3, stride=1, 
                 module_list=[first_model.conv3])
             self.fc1 = GLinear(self.linear_size, 512, module_list=[first_model.fc1])
             self.fc2 = GLinear(512, 256, module_list=[first_model.fc2])
@@ -342,39 +363,48 @@ class GNet(nn.Module):
                 self.fc4_1 = GLinear(128, out_channels)
                 self.fc4_1_exist = True
 
-    def forward(self, x):
+    def forward(self, x, phase=None):
+        if phase is None:
+            phase = self.phase
+        else:
+            self.phase = phase
         if not self.in_ram:
             x = x / 255.
-            x = F.relu(self.conv1(x))
-            x = F.relu(self.conv2(x))
-            x = F.relu(self.conv3(x))
+            x = F.relu(self.conv1(x, phase))
+            x = F.relu(self.conv2(x, phase))
+            x = F.relu(self.conv3(x, phase))
             x = x.reshape(x.size(0), -1)
         if self.fc1_1_exist and self.task_num==1:
-            adv = F.relu(self.fc1_1(x))
+            adv = F.relu(self.fc1_1(x, phase))
         else:
-            adv = F.relu(self.fc1(x))
-        adv = F.relu(self.fc2(adv))
-        adv = F.relu(self.fc3(adv))
+            adv = F.relu(self.fc1(x, phase))
+        adv = F.relu(self.fc2(adv, phase))
+        adv = F.relu(self.fc3(adv, phase))
         if self.fc4_1_exist and self.task_num==1:
-            adv = self.fc4_1(adv)
+            adv = self.fc4_1(adv, phase)
         else:
-            adv = self.fc4(adv)
+            adv = self.fc4(adv, phase)
         return adv
 
-    def is_ram(self, task_name):
-        return '-ram' in task_name
-
     def param_loss(self):
-        self.param_loss_out = torch.zeros(1)
-        softmax_alpha = self.softmax(self.alpha)
-        if not in_ram:
-            self.param_loss_out += self.conv1.param_loss()
+        self.param_loss_out = None
+        if not self.in_ram:
+            if self.param_loss_out is None:
+                self.param_loss_out = self.conv1.param_loss()
+            else:
+                self.param_loss_out += self.conv1.param_loss()
             self.param_loss_out += self.conv2.param_loss()
             self.param_loss_out += self.conv3.param_loss()
         if self.fc1_1_exist and self.task_num==1:
-            self.param_loss_out += self.fc1_1.param_loss()
+            if self.param_loss_out is None:
+                self.param_loss_out = self.fc1_1.param_loss()
+            else:
+                self.param_loss_out += self.fc1_1.param_loss()
         else:
-            self.param_loss_out += self.fc1.param_loss()
+            if self.param_loss_out is None:
+                self.param_loss_out = self.fc1.param_loss()
+            else:
+                self.param_loss_out += self.fc1.param_loss()
         self.param_loss_out += self.fc2.param_loss()
         self.param_loss_out += self.fc3.param_loss()
         if self.fc4_1_exist and self.task_num==1:
@@ -384,14 +414,38 @@ class GNet(nn.Module):
         return self.param_loss_out
 
     def reset_alpha(self):
-        if not in_ram:
+        if not self.in_ram:
             self.conv1.reset_alpha()
             self.conv2.reset_alpha()
             self.conv3.reset_alpha()
-        if not self.fc1_1_exist or not slef.no_grow: self.fc1.reset_alpha()
+        if not self.fc1_1_exist or not self.no_grow: self.fc1.reset_alpha()
         self.fc2.reset_alpha()
         self.fc3.reset_alpha()
-        if not self.fc4_1_exist or not slef.no_grow: self.fc4.reset_alpha()
+        if not self.fc4_1_exist or not self.no_grow: self.fc4.reset_alpha()
+
+    def struct_parameters(self, recurse: bool = True):
+        for name, param in self.named_parameters(recurse=recurse):
+            if 'alpha' in name:
+                yield param
+
+    def param_parameters(self, recurse: bool = True):
+        for name, param in self.named_parameters(recurse=recurse):
+            if 'alpha' not in name and 'param' not in name:
+                yield param
+
+    def struct_log(self, first_log=False):
+        name_list = []
+        index_list = []
+        alpha_list = []
+        for name, param in self.named_parameters(recurse=True):
+            if 'alpha' in name:
+                name_list.append(name.replace('.alpha', ''))
+                index_list.append(int(param.argmax()))
+                alpha_list.append('{:.2e}'.format(param[param.argmax()]))
+        if first_log:
+            return ', '.join(map(str, name_list))
+        else:
+            return ', '.join(map(str, index_list+alpha_list))
 
 
 class Action_log():
@@ -454,6 +508,7 @@ def check_and_get(model_upath):
         model_dir = os.path.dirname(model_path)
         os.makedirs(model_dir, exist_ok=True)
         subprocess.call(f'scp {model_upath} {model_path}', shell=True)
+    return model_path
 
 def make_env(env_name, high_reso, color, no_stack, eval_out=False):
     is_ram = '-ram' in env_name
@@ -476,7 +531,10 @@ def make_env(env_name, high_reso, color, no_stack, eval_out=False):
     else:
         return env
 
-@hydra.main(config_name='config/atari_dqn_config.yaml')
+def is_ram(task_name):
+    return '-ram' in task_name
+
+@hydra.main(config_name='config/atari_gdqn_config.yaml')
 def main(cfg):
     set_seed(cfg.seed)
 
@@ -500,6 +558,7 @@ def main(cfg):
         mlflow.log_param('net_version', cfg.net_version)
         mlflow.log_param('task_num', cfg.task_num)
         mlflow.log_param('no_grow', cfg.no_grow)
+        mlflow.log_param('param_coef', cfg.param_coef)
         mlflow.set_tag('env', cfg.env)
         mlflow.set_tag('env1', cfg.env1)
         mlflow.set_tag('commitid', get_commitid())
@@ -519,13 +578,12 @@ def main(cfg):
         first_env = make_env(cfg.env, cfg.high_reso, cfg.color, cfg.no_stack, eval_out=False)
         first_state = first_env.observation_space.shape[0]
         first_action = first_env.action_space.n
-        if '-ram' in cfg.env:
+        if is_ram(cfg.env):
             first_model = RamNet_2(first_state, first_action)
         else:
             first_model = Net_2(first_state, first_action, high_reso=cfg.high_reso)
-        check_and_get(cfg.load)
-        if cfg.load:
-            first_model.load_state_dict(torch.load(cfg.load.split(':')[-1]), map_location=cfg.device)
+        local_model_path = check_and_get(cfg.load)
+        first_model.load_state_dict(torch.load(local_model_path), map_location=cfg.device)
 
         second_env = make_env(cfg.env1, cfg.high_reso, cfg.color, cfg.no_stack, eval_out=False)
         second_state = second_env.observation_space.shape[0]
@@ -535,11 +593,13 @@ def main(cfg):
             high_reso=cfg.high_reso, task_num=cfg.task_num)
 
         if cfg.load1:
-            check_and_get(cfg.load1)
-            q_func.load_state_dict(torch.load(cfg.load1.split(':')[-1]), map_location=cfg.device)
+            local_model_path = check_and_get(cfg.load1)
+            q_func.load_state_dict(torch.load(local_model_path), map_location=cfg.device)
 
-        optimizer = optim.RMSprop(
-            q_func.parameters(), lr=0.00025, alpha=0.95, eps=1e-2)
+        optimizer_struct = optim.RMSprop(
+            q_func.struct_parameters(), lr=0.00025, alpha=0.95, eps=1e-2)
+        optimizer_param = optim.RMSprop(
+            q_func.param_parameters(), lr=0.00025, alpha=0.95, eps=1e-2)
 
         if cfg.prioritized:
             memory = PrioritizedReplayBuffer(capacity=cfg.replay_capacity, beta_steps=cfg.steps - cfg.replay_start_step, nstep=cfg.nstep)
@@ -553,11 +613,12 @@ def main(cfg):
         explorer = epsilon_greedy.LinearDecayEpsilonGreedy(
             start_eps=1.0, end_eps=0.1, decay_steps=1e6)
 
-        agent = gdqn.GDoubleDQN(q_func, optimizer, memory, cfg.gamma,
+        agent = gdqn.GDoubleDQN(q_func, optimizer_struct, optimizer_param, memory, cfg.gamma,
                               explorer, cfg.device, batch_size=32,
                               target_update_interval=10000,
                               replay_start_step=cfg.replay_start_step,
-                              huber=cfg.huber)
+                              huber=cfg.huber, param_coef=cfg.param_coef,
+                              struct_retio=cfg.struct_retio, param_retio=cfg.param_retio)
 
         if cfg.demo:
             for x in range(10):
@@ -594,6 +655,17 @@ def main(cfg):
         log_file_name = 'scores.txt'
         model_file_name = 'model_path.txt'
         action_file_name = 'action.txt'
+        act_value_file_name = 'action_value.txt'
+        struct_file_name = 'struct.txt'
+        with open(model_file_name, 'a') as f: pass
+        with open(action_file_name, 'a') as f: pass
+        with open(act_value_file_name, 'a') as f: pass
+        with open(struct_file_name, 'a') as f:
+            f.write(q_func.struct_log(first_log=True) + '\n')
+        mlflow.log_artifact(model_file_name)
+        mlflow.log_artifact(action_file_name)
+        mlflow.log_artifact(act_value_file_name)
+        mlflow.log_artifact(struct_file_name)
         best_score = -1e10
 
         while agent.total_steps < cfg.steps:
@@ -626,7 +698,7 @@ def main(cfg):
                     done = False
 
                     while not done:
-                        action = agent.act(obs, greedy=True)
+                        action, action_value = agent.act(obs, greedy=True, act_value_out=True)
                         action_log(action)
                         obs, reward, done, _ = eval_env.step(action)
 
@@ -661,6 +733,10 @@ def main(cfg):
                     f.write(log)
                 with open(action_file_name, 'a') as f:
                     f.write(action_log.log() + '\n')
+                with open(act_value_file_name, 'a') as f:
+                    f.write(act_value_log(action, action_value) + '\n')
+                with open(struct_file_name, 'a') as f:
+                    f.write(q_func.struct_log() + '\n')
 
         # final evaluation
         total_reward = 0
@@ -671,7 +747,7 @@ def main(cfg):
             done = False
 
             while not done:
-                action = agent.act(obs, greedy=True)
+                action, action_value = agent.act(obs, greedy=True, act_value_out=True)
                 action_log(action)
                 obs, reward, done, _ = eval_env.step(action)
 
@@ -689,7 +765,7 @@ def main(cfg):
         machine_name = os.uname()[1]
         with open(model_file_name, 'a') as f:
             f.write(user_name + '@' + machine_name + ':' + model_name+'\n')
-        mlflow.log_artifact(model_file_name)
+        # mlflow.log_artifact(model_file_name)
 
         now = time()
         elapsed = now - train_start_time
@@ -702,7 +778,14 @@ def main(cfg):
 
         with open(action_file_name, 'a') as f:
             f.write(action_log.log() + '\n')
-        mlflow.log_artifact(action_file_name)
+        # mlflow.log_artifact(action_file_name)
+
+        with open(act_value_file_name, 'a') as f:
+            f.write(act_value_log(action, action_value) + '\n')
+        # mlflow.log_artifact(act_value_file_name)
+
+        with open(struct_file_name, 'a') as f:
+            f.write(q_func.struct_log() + '\n')
 
         duration = np.round(elapsed / 60 / 60, 2)
         mlflow.log_metric('duration', duration)

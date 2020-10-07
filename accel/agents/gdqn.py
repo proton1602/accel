@@ -8,17 +8,20 @@ from accel.replay_buffers.prioritized_replay_buffer import PrioritizedReplayBuff
 
 
 class GDQN:
-    def __init__(self, q_func, optimizer, replay_buffer, gamma, explorer,
+    def __init__(self, q_func, optimizer_struct, optimizer_param, replay_buffer, gamma, explorer,
                  device,
                  batch_size=32,
                  update_interval=4,
                  target_update_interval=200,
                  replay_start_step=10000,
                  huber=False,
-                 param_coef=1e-5):
+                 param_coef=1e-5,
+                 struct_retio=1,
+                 param_retio=1):
         self.q_func = q_func.to(device)
         self.target_q_func = copy.deepcopy(self.q_func).to(device)
-        self.optimizer = optimizer
+        self.optimizer_struct = optimizer_struct
+        self.optimizer_param = optimizer_param
         self.replay_buffer = replay_buffer
         self.prioritized = isinstance(replay_buffer, PrioritizedReplayBuffer)
         self.gamma = gamma
@@ -29,12 +32,16 @@ class GDQN:
         self.target_update_interval = target_update_interval
         self.huber = huber
         self.param_coef = param_coef
+        self.struct_retio = struct_retio
+        self.param_retio = param_retio
         self.total_steps = 0
         self.replay_start_step = replay_start_step
 
-        self.prev_target_update_time = 0
-
         self.target_q_func.eval()
+
+    def set_phase(self, phase):
+        self.q_func.phase = phase
+        self.target_q_func.phase = phase
 
     def act(self, obs, greedy=False, act_value_out=False):
         obs = torch.tensor(obs, device=self.device, dtype=torch.float32)
@@ -54,6 +61,10 @@ class GDQN:
                                 np.float32(reward), valid)
 
         self.total_steps += 1
+        if self.total_steps % (self.struct_retio+self.param_retio) < self.struct_retio:
+            self.set_phase('struct')
+        else:
+            self.set_phase('param')
         if self.total_steps % self.update_interval == 0:
             return self.train()
 
@@ -130,17 +141,21 @@ class GDQN:
             else:
                 loss = F.mse_loss(state_action_values,
                                   expected_state_action_values.unsqueeze(1))
-        loss += self.param_coef * self.q_func.param_loss()
+        
+        if self.q_func.phase == 'struct':
+            loss += self.param_coef * self.q_func.param_loss()
+            self.optimizer_struct.zero_grad()
+            loss.backward()
+            self.optimizer_struct.step()
+        elif self.q_func.phase == 'param':
+            self.optimizer_param.zero_grad()
+            loss.backward()
+            # for param in self.q_func.parameters():
+            #    param.grad.data.clamp_(-1, 1)
+            self.optimizer_param.step()
 
-        self.optimizer.zero_grad()
-        loss.backward()
-        # for param in self.q_func.parameters():
-        #    param.grad.data.clamp_(-1, 1)
-        self.optimizer.step()
-
-        if self.total_steps - self.prev_target_update_time > self.target_update_interval:
+        if self.total_steps % self.target_update_interval == 0:
             self.target_q_func.load_state_dict(self.q_func.state_dict())
-            self.prev_target_update_time = self.total_steps
         return float(loss.to('cpu').detach().numpy().copy())
 
 
