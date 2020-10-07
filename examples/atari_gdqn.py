@@ -447,7 +447,12 @@ def get_model_path(model_evacuation):
 
 def check_and_get(model_upath):
     user_machine, model_path = model_upath.split(':')
+    out_path = model_path[model_path.find('outputs'):]
+    local_home = os.getenv('LOCALHOME')
+    model_path = os.path.join(local_home, out_path)
     if not os.path.exists(model_path):
+        model_dir = os.path.dirname(model_path)
+        os.makedirs(model_dir, exist_ok=True)
         subprocess.call(f'scp {model_upath} {model_path}', shell=True)
 
 def make_env(env_name, high_reso, color, no_stack, eval_out=False):
@@ -514,7 +519,7 @@ def main(cfg):
         first_env = make_env(cfg.env, cfg.high_reso, cfg.color, cfg.no_stack, eval_out=False)
         first_state = first_env.observation_space.shape[0]
         first_action = first_env.action_space.n
-        if is_ram:
+        if '-ram' in cfg.env:
             first_model = RamNet_2(first_state, first_action)
         else:
             first_model = Net_2(first_state, first_action, high_reso=cfg.high_reso)
