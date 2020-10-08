@@ -250,6 +250,7 @@ def main(cfg):
         mlflow.log_param('nstep', cfg.nstep)
         mlflow.log_param('huber', cfg.huber)
         mlflow.log_param('net_version', cfg.net_version)
+        mlflow.log_param('act_deform', cfg.act_deform)
         mlflow.set_tag('env', cfg.env)
         mlflow.set_tag('commitid', get_commitid())
         mlflow.set_tag('machine', os.uname()[1])
@@ -272,6 +273,15 @@ def main(cfg):
                                  frame_stack=not cfg.no_stack)
                 eval_env = make_atari(
                     cfg.env, clip_rewards=False, color=cfg.color, frame_stack=not cfg.no_stack)
+
+        action_list = list(range(env.action_space.n))
+        if cfg.act_deform:
+            if cfg.act_deform == 'inv':
+                action_list = action_list.reverse()
+            elif cfg.act_deform == "shift":
+                action_list = action_list[1:] + action_list[:1]
+            else:
+                raise ValueError('cfg.act_deform')
 
         env.seed(cfg.seed)
         eval_env.seed(cfg.seed)
@@ -319,7 +329,8 @@ def main(cfg):
             start_eps=1.0, end_eps=0.1, decay_steps=1e6)
 
         agent = dqn.DoubleDQN(q_func, optimizer, memory, cfg.gamma,
-                              explorer, cfg.device, batch_size=32,
+                              explorer, cfg.device, action_list=action_list, 
+                              batch_size=32,
                               target_update_interval=10000,
                               replay_start_step=cfg.replay_start_step,
                               huber=cfg.huber)
