@@ -846,9 +846,10 @@ def main(cfg):
         model_file_name = 'model_path.txt'
         action_file_name = 'action.txt'
         act_value_file_name = 'action_value.txt'
-        struct_file_name = 'struct.txt'
-        with open(struct_file_name, 'a') as f:
-            f.write(q_func.struct_log(first_log=True) + '\n')
+        if cfg.mode == 'normal' or cfg.mode == 'third':
+            struct_file_name = 'struct.txt'
+            with open(struct_file_name, 'a') as f:
+                f.write(q_func.struct_log(first_log=True) + '\n')
         best_score = -1e10
 
         while agent.total_steps < cfg.steps:
@@ -918,8 +919,9 @@ def main(cfg):
                     f.write(action_log.log() + '\n')
                 with open(act_value_file_name, 'a') as f:
                     f.write(act_value_log(action, action_value) + '\n')
-                with open(struct_file_name, 'a') as f:
-                    f.write(q_func.struct_log() + '\n')
+                if cfg.mode == 'normal' or cfg.mode == 'third':
+                    with open(struct_file_name, 'a') as f:
+                        f.write(q_func.struct_log() + '\n')
 
         # final evaluation
         total_reward = 0
@@ -967,9 +969,10 @@ def main(cfg):
             f.write(act_value_log(action, action_value) + '\n')
         mlflow.log_artifact(act_value_file_name)
 
-        with open(struct_file_name, 'a') as f:
-            f.write(q_func.struct_log() + '\n')
-        mlflow.log_artifact(struct_file_name)
+        if cfg.mode == 'normal' or cfg.mode == 'third':
+            with open(struct_file_name, 'a') as f:
+                f.write(q_func.struct_log() + '\n')
+            mlflow.log_artifact(struct_file_name)
 
 
         duration = np.round(elapsed / 60 / 60, 2)
