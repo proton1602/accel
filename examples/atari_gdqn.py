@@ -576,6 +576,7 @@ def main(cfg):
         mlflow.log_param('no_grow', cfg.no_grow)
         mlflow.log_param('param_coef', cfg.param_coef)
         mlflow.log_param('new_set', cfg.new_set)
+        mlflow.log_param('act_deform', cfg.act_deform)
         mlflow.set_tag('env', cfg.env)
         mlflow.set_tag('env1', cfg.env1)
         mlflow.set_tag('commitid', get_commitid())
@@ -592,6 +593,14 @@ def main(cfg):
 
         env_name = cfg.env1 if cfg.task_num==1 else cfg.env
         env, eval_env = make_env(env_name, cfg.high_reso, cfg.color, cfg.no_stack, eval_out=True)
+        action_list = list(range(env.action_space.n))
+        if cfg.act_deform:
+            if cfg.act_deform == 'inv':
+                action_list = action_list.reverse()
+            elif cfg.act_deform == "shift":
+                action_list = action_list[1:] + action_list[:1]
+            else:
+                raise ValueError('cfg.act_deform')
 
         env.seed(cfg.seed)
         eval_env.seed(cfg.seed)
@@ -642,7 +651,7 @@ def main(cfg):
             start_eps=1.0, end_eps=0.1, decay_steps=1e6)
 
         agent = gdqn.GDoubleDQN(q_func, optimizer_struct, optimizer_param, memory, cfg.gamma,
-                              explorer, cfg.device, batch_size=32,
+                              explorer, cfg.device, action_list, batch_size=32,
                               target_update_interval=10000,
                               replay_start_step=cfg.replay_start_step,
                               huber=cfg.huber, param_coef=cfg.param_coef,
