@@ -160,8 +160,8 @@ class AdaptL(nn.Module):
         return int(-(-x//1)) # Round up
 
 class GConv2d(nn.Module):
-    def __init__(self, in_channels: int, out_channels: int, kernel_size, stride = 1,
-        module_list=[], no_grow=False):
+    def __init__(self, in_channels: int, out_channels: int, second_model, kernel_size, stride = 1,
+        module_list=[], no_grow=False, new_set=False):
         super(GConv2d, self).__init__()
         self.LinearDict = nn.ModuleDict()
         self.key_list = [] # Guarantee the order
@@ -175,7 +175,11 @@ class GConv2d(nn.Module):
                     in_channels, out_channels, self)
                 self.key_list.append(f'adapt{i}')
         if len(module_list)==0 or not no_grow:
-            self.LinearDict['new'] = Conv2d_hold(in_channels, out_channels, kernel_size, stride=stride)
+            if new_set:
+                self.LinearDict['new'] = Conv2d_hold(in_channels, out_channels, kernel_size, stride=stride,
+                    load_model=second_model)
+            else:
+                self.LinearDict['new'] = Conv2d_hold(in_channels, out_channels, kernel_size, stride=stride)
             self.key_list.append('new')
         self.len = len(self.LinearDict)
         if self.len == 1:
@@ -222,7 +226,7 @@ class GConv2d(nn.Module):
 
 
 class GLinear(nn.Module):
-    def __init__(self, in_channels, out_channels, module_list=[], no_grow=False):
+    def __init__(self, in_channels, out_channels, second_model, module_list=[], no_grow=False, new_set=False):
         super(GLinear, self).__init__()
         self.LinearDict = nn.ModuleDict()
         self.key_list = [] # Guarantee the order
@@ -235,7 +239,10 @@ class GLinear(nn.Module):
                     in_channels, out_channels, self)
                 self.key_list.append(f'adapt{i}')
         if len(module_list)==0 or not no_grow:
-            self.LinearDict['new'] = Linear_hold(in_channels, out_channels)
+            if new_set:
+                self.LinearDict['new'] = Linear_hold(in_channels, out_channels, load_model=second_model)
+            else:
+                self.LinearDict['new'] = Linear_hold(in_channels, out_channels)
             self.key_list.append('new')
         self.len = len(self.LinearDict)
         if self.len == 1:
@@ -282,8 +289,8 @@ class GLinear(nn.Module):
 
 
 class GNet(nn.Module):
-    def __init__(self, in_channels, out_channels, first_task, first_model, second_task, no_grow=True,
-         high_reso=False, task_num = 1):
+    def __init__(self, in_channels, out_channels, first_task, first_model, second_task, second_model, no_grow=True,
+         high_reso=False, task_num = 1, new_set=False):
         super(GNet, self).__init__()
         self.linear_size = 7 * 7 * 64 if not high_reso else 12 * 12 * 64
         self.task_num = task_num # 0: first_task, 1: second_task, 2: third_task(same as the first)
@@ -298,73 +305,73 @@ class GNet(nn.Module):
         self.fc4_1_exist = False
         if self.f2s == 'ram2ram':
             if self.first_in_channels == in_channels:
-                self.fc1 = GLinear(self.first_in_channels, 512, module_list=[first_model.fc1])
+                self.fc1 = GLinear(self.first_in_channels, 512, second_model.fc1, module_list=[first_model.fc1], new_set=new_set)
             else:
-                self.fc1 = GLinear(self.first_in_channels, 512, module_list=[first_model.fc1], no_grow=self.no_grow)
-                self.fc1_1 = GLinear(in_channels, 512)
+                self.fc1 = GLinear(self.first_in_channels, 512, None, module_list=[first_model.fc1], no_grow=self.no_grow)
+                self.fc1_1 = GLinear(in_channels, 512, second_model.fc1, new_set=new_set)
                 self.fc1_1_exist = True
-            self.fc2 = GLinear(512, 256, module_list=[first_model.fc2])
-            self.fc3 = GLinear(256, 128, module_list=[first_model.fc3])
+            self.fc2 = GLinear(512, 256, second_model.fc2, module_list=[first_model.fc2], new_set=new_set)
+            self.fc3 = GLinear(256, 128, second_model.fc3, module_list=[first_model.fc3], new_set=new_set)
             if self.first_out_channels == out_channels:
-                self.fc4 = GLinear(128, self.first_out_channels, module_list=[first_model.fc4])
+                self.fc4 = GLinear(128, self.first_out_channels, second_model.fc4, module_list=[first_model.fc4], new_set=new_set)
             else: 
-                self.fc4 = GLinear(128, self.first_out_channels, module_list=[first_model.fc4], no_grow=self.no_grow)
-                self.fc4_1 = GLinear(128, out_channels)
+                self.fc4 = GLinear(128, self.first_out_channels, None, module_list=[first_model.fc4], no_grow=self.no_grow)
+                self.fc4_1 = GLinear(128, out_channels, second_model.fc4, new_set=new_set)
                 self.fc4_1_exist = True
         elif self.f2s == 'ram2img': 
-            self.conv1 = GConv2d(in_channels, 32, kernel_size=8, stride=4)
-            self.conv2 = GConv2d(32, 64, kernel_size=4, stride=2)
-            self.conv3 = GConv2d(64, 64, kernel_size=3, stride=1)
+            self.conv1 = GConv2d(in_channels, 32, second_model.conv1, kernel_size=8, stride=4, new_set=new_set)
+            self.conv2 = GConv2d(32, 64, second_model.conv2, kernel_size=4, stride=2, new_set=new_set)
+            self.conv3 = GConv2d(64, 64, second_model.conv3, kernel_size=3, stride=1, new_set=new_set)
             if self.first_in_channels == self.linear_size:
-                self.fc1 = GLinear(self.first_in_channels, 512, module_list=[first_model.fc1])
+                self.fc1 = GLinear(self.first_in_channels, 512, second_model.fc1 , module_list=[first_model.fc1], new_set=new_set)
             else:
-                self.fc1 = GLinear(self.first_in_channels, 512, module_list=[first_model.fc1], no_grow=self.no_grow)
-                self.fc1_1 = GLinear(self.linear_size, 512)
+                self.fc1 = GLinear(self.first_in_channels, 512, None, module_list=[first_model.fc1], no_grow=self.no_grow)
+                self.fc1_1 = GLinear(self.linear_size, 512, second_model.fc1, new_set=new_set)
                 self.fc1_1_exist = True
-            self.fc2 = GLinear(512, 256, module_list=[first_model.fc2])
-            self.fc3 = GLinear(256, 128, module_list=[first_model.fc3])
+            self.fc2 = GLinear(512, 256, second_model.fc2, module_list=[first_model.fc2], new_set=new_set)
+            self.fc3 = GLinear(256, 128, second_model.fc3, module_list=[first_model.fc3], new_set=new_set)
             if self.first_out_channels == out_channels:
-                self.fc4 = GLinear(128, self.first_out_channels, module_list=[first_model.fc4])
+                self.fc4 = GLinear(128, self.first_out_channels, second_model.fc4, module_list=[first_model.fc4], new_set=new_set)
             else: 
-                self.fc4 = GLinear(128, self.first_out_channels, module_list=[first_model.fc4], no_grow=self.no_grow)
-                self.fc4_1 = GLinear(128, out_channels)
+                self.fc4 = GLinear(128, self.first_out_channels, None, module_list=[first_model.fc4], no_grow=self.no_grow)
+                self.fc4_1 = GLinear(128, out_channels, second_model.fc4, new_set=new_set)
                 self.fc4_1_exist = True
         elif self.f2s == 'img2ram':
-            self.conv1 = GConv2d(in_channels, 32, kernel_size=8, stride=4, 
-                module_list=[first_model.conv1], no_grow=self.no_grow)
-            self.conv2 = GConv2d(32, 64, kernel_size=4, stride=2, 
-                module_list=[first_model.conv2], no_grow=self.no_grow)
-            self.conv3 = GConv2d(64, 64, kernel_size=3, stride=1, 
-                module_list=[first_model.conv3], no_grow=self.no_grow)
+            self.conv1 = GConv2d(in_channels, 32, second_model.conv1, kernel_size=8, stride=4, 
+                module_list=[first_model.conv1], no_grow=self.no_grow, new_set=new_set)
+            self.conv2 = GConv2d(32, 64, second_model.conv2, kernel_size=4, stride=2, 
+                module_list=[first_model.conv2], no_grow=self.no_grow, new_set=new_set)
+            self.conv3 = GConv2d(64, 64, second_model.conv3, kernel_size=3, stride=1, 
+                module_list=[first_model.conv3], no_grow=self.no_grow, new_set=new_set)
             if self.linear_size == in_channels:
-                self.fc1 = GLinear(self.linear_size, 512, module_list=[first_model.fc1])
+                self.fc1 = GLinear(self.linear_size, 512, second_model.fc1, module_list=[first_model.fc1], new_set=new_set)
             else:
-                self.fc1 = GLinear(self.linear_size, 512, module_list=[first_model.fc1], no_grow=self.no_grow)
-                self.fc1_1 = GLinear(in_channels, 512)
+                self.fc1 = GLinear(self.linear_size, 512, None, module_list=[first_model.fc1], no_grow=self.no_grow)
+                self.fc1_1 = GLinear(in_channels, 512, second_model.fc1, new_set=new_set)
                 self.fc1_1_exist = True
-            self.fc2 = GLinear(512, 256, module_list=[first_model.fc2])
-            self.fc3 = GLinear(256, 128, module_list=[first_model.fc3])
+            self.fc2 = GLinear(512, 256, second_model.fc2, module_list=[first_model.fc2], new_set=new_set)
+            self.fc3 = GLinear(256, 128, second_model.fc3, module_list=[first_model.fc3], new_set=new_set)
             if self.first_out_channels == out_channels:
-                self.fc4 = GLinear(128, self.first_out_channels, module_list=[first_model.fc4])
+                self.fc4 = GLinear(128, self.first_out_channels, second_model.fc4, module_list=[first_model.fc4], new_set=new_set)
             else: 
-                self.fc4 = GLinear(128, self.first_out_channels, module_list=[first_model.fc4], no_grow=self.no_grow)
-                self.fc4_1 = GLinear(128, out_channels)
+                self.fc4 = GLinear(128, self.first_out_channels, None, module_list=[first_model.fc4], no_grow=self.no_grow)
+                self.fc4_1 = GLinear(128, out_channels, second_model.fc4, new_set=new_set)
                 self.fc4_1_exist = True
         elif self.f2s == 'img2img':
-            self.conv1 = GConv2d(in_channels, 32, kernel_size=8, stride=4, 
-                module_list=[first_model.conv1])
-            self.conv2 = GConv2d(32, 64, kernel_size=4, stride=2, 
-                module_list=[first_model.conv2])
-            self.conv3 = GConv2d(64, 64, kernel_size=3, stride=1, 
-                module_list=[first_model.conv3])
-            self.fc1 = GLinear(self.linear_size, 512, module_list=[first_model.fc1])
-            self.fc2 = GLinear(512, 256, module_list=[first_model.fc2])
-            self.fc3 = GLinear(256, 128, module_list=[first_model.fc3])
+            self.conv1 = GConv2d(in_channels, 32, second_model.conv1, kernel_size=8, stride=4, 
+                module_list=[first_model.conv1], new_set=new_set)
+            self.conv2 = GConv2d(32, 64, second_model.conv2, kernel_size=4, stride=2, 
+                module_list=[first_model.conv2], new_set=new_set)
+            self.conv3 = GConv2d(64, 64, second_model.conv3, kernel_size=3, stride=1, 
+                module_list=[first_model.conv3], new_set=new_set)
+            self.fc1 = GLinear(self.linear_size, 512, second_model.fc1, module_list=[first_model.fc1], new_set=new_set)
+            self.fc2 = GLinear(512, 256, second_model.fc2, module_list=[first_model.fc2], new_set=new_set)
+            self.fc3 = GLinear(256, 128, second_model.fc3, module_list=[first_model.fc3], new_set=new_set)
             if self.first_out_channels == out_channels:
-                self.fc4 = GLinear(128, self.first_out_channels, module_list=[first_model.fc4])
+                self.fc4 = GLinear(128, self.first_out_channels, second_model.fc4, module_list=[first_model.fc4], new_set=new_set)
             else: 
-                self.fc4 = GLinear(128, self.first_out_channels, module_list=[first_model.fc4], no_grow=self.no_grow)
-                self.fc4_1 = GLinear(128, out_channels)
+                self.fc4 = GLinear(128, self.first_out_channels, None, module_list=[first_model.fc4], no_grow=self.no_grow)
+                self.fc4_1 = GLinear(128, out_channels, second_model.fc4, new_set=new_set)
                 self.fc4_1_exist = True
 
     def forward(self, x, phase=None):
@@ -568,12 +575,15 @@ def main(cfg):
         mlflow.log_param('task_num', cfg.task_num)
         mlflow.log_param('no_grow', cfg.no_grow)
         mlflow.log_param('param_coef', cfg.param_coef)
+        mlflow.log_param('new_set', cfg.new_set)
         mlflow.set_tag('env', cfg.env)
         mlflow.set_tag('env1', cfg.env1)
         mlflow.set_tag('commitid', get_commitid())
         mlflow.set_tag('machine', os.uname()[1])
         cfg.load = getpass.getuser() + '@' + cfg.load_m + ':' + cfg.load
         mlflow.set_tag('load', cfg.load)
+        cfg.load1_0 = getpass.getuser() + '@' + cfg.load1_0_m + ':' + cfg.load1_0 if cfg.load1_0 else cfg.load1_0
+        mlflow.set_tag('load1_0', cfg.load1_0)
         cfg.load1 = getpass.getuser() + '@' + cfg.load1_m + ':' + cfg.load1 if cfg.load1 else cfg.load1
         mlflow.set_tag('load1', cfg.load1)
 
@@ -599,9 +609,16 @@ def main(cfg):
         second_env = make_env(cfg.env1, cfg.high_reso, cfg.color, cfg.no_stack, eval_out=False)
         second_state = second_env.observation_space.shape[0]
         second_action = second_env.action_space.n
+        if is_ram(cfg.env1):
+            second_model = RamNet_2(second_state, second_action)
+        else:
+            second_model = Net_2(second_state, second_action, high_reso=cfg.high_reso)
+        if cfg.load1_0:
+            load_model_path = check_and_get(cfg.load1_0)
+            second_model.load_state_dict(torch.load(local_model_path, map_location=cfg.device))
 
-        q_func = GNet(second_state, second_action, cfg.env, first_model, cfg.env1, no_grow=cfg.no_grow, 
-            high_reso=cfg.high_reso, task_num=cfg.task_num)
+        q_func = GNet(second_state, second_action, cfg.env, first_model, cfg.env1, second_model, no_grow=cfg.no_grow, 
+            high_reso=cfg.high_reso, task_num=cfg.task_num, new_set=cfg.new_set)
 
         if cfg.load1:
             local_model_path = check_and_get(cfg.load1)

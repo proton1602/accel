@@ -2,6 +2,8 @@ env: FreewayNoFrameskip-v4
 env1: ""
 load_m: ""
 load: ""
+load1_0_m: ""
+load1_0: ""
 load1_m: ""
 load1: ""
 task_num: 1
@@ -28,3 +30,4 @@ no_grow: True
 param_coef: 1e-5
 struct_retio: 1
 param_retio: 1
+new_set: False
