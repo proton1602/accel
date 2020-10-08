@@ -804,7 +804,7 @@ def main(cfg):
                                 huber=cfg.huber, param_coef=cfg.param_coef,
                                 struct_retio=cfg.struct_retio, param_retio=cfg.param_retio)
         else:
-            agent = dqn.DoubleDQN(q_func, optimizer_struct, optimizer, memory, cfg.gamma,
+            agent = dqn.DoubleDQN(q_func, optimizer, memory, cfg.gamma,
                                 explorer, cfg.device, action_list=action_list, batch_size=32,
                                 target_update_interval=10000,
                                 replay_start_step=cfg.replay_start_step,
