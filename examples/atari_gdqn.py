@@ -755,7 +755,8 @@ def main(cfg):
                 for name, param in q_func.named_parameters():
                     name_ = name.replace('.LinearDict','')
                     if name_ in load_model_dict.keys():
-                        param.data = load_model_dict[name_].data
+                        if param.data.size() == load_model_dict[name_].data.size():
+                            param.data = load_model_dict[name_].data
 
         elif cfg.mode == 'trans':
             local_model_path = check_and_get(cfg.load)
@@ -772,7 +773,8 @@ def main(cfg):
             
             for name, param in q_func.named_parameters():
                 if name in load_model_keys:
-                    param.data = load_model_dict[name].data
+                    if param.data.size() == load_model_dict[name].data.size():
+                        param.data = load_model_dict[name].data
 
 
         if cfg.mode == 'normal' or cfg.mode == 'third':
