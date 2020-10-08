@@ -19,7 +19,7 @@ from accel.utils.atari_wrappers import make_atari, make_atari_ram
 from accel.explorers import epsilon_greedy
 from accel.replay_buffers.replay_buffer import Transition, ReplayBuffer
 from accel.replay_buffers.prioritized_replay_buffer import PrioritizedReplayBuffer
-from accel.agents import gdqn
+from accel.agents import dqn, gdqn
 from accel.utils.utils import set_seed
 
 
@@ -458,6 +458,102 @@ class GNet(nn.Module):
         else:
             return ', '.join(map(str, index_list+alpha_list))
 
+class SAdaptC(nn.Module):
+    def __init__(self, main_link, input_size, output_size):
+        super(SAdaptC, self).__init__()
+        self.input_size = input_size
+        self.output_size = output_size
+        self.main = main_link
+        self.sub = nn.Conv2d(output_size, output_size, kernel_size=1, stride=1)
+
+    def forward(self, x): 
+        y = self.main(x) 
+        return y + self.sub(y)
+
+class SAdaptL(nn.Module):
+    def __init__(self, main_link, input_size, output_size, comp_rate=2**(-4)):
+        super(SAdaptL, self).__init__()
+        self.input_size = input_size
+        self.comp_size = self.floor(input_size*comp_rate)
+        self.output_size = output_size
+        self.main = main_link
+        self.sub0 = nn.Linear(self.input_size, self.comp_size)
+        self.sub1 = nn.Linear(self.comp_size, self.output_size)
+
+    def forward(self, x): 
+        return self.main(x) + self.sub1(self.sub0(x)) 
+
+    def floor(self, x): 
+        return int(-(-x//1)) # Round up
+
+class SNet(nn.Module):
+    def __init__(self, in_channels, out_channels, model_set, first_model, second_model, high_reso=False, new_set=False, ram=False):
+        super().__init__()
+        self.ram = ram
+        self.key_list = []
+        for key_ in model_set:
+            if key_ == 'r': self.key_list.append('reuse0')
+            elif key_ == 'a': self.key_list.append('adapt0')
+            elif key_ == 'n': self.key_list.append('new')
+            else: raise KeyError
+        i = 0
+        if not self.ram:
+            self.conv1 = nn.ModuleDict()
+            if model_set[i] == 'r': self.conv1[self.key_list[i]] =  first_model.conv1
+            elif model_set[i] == 'a': self.conv1[self.key_list[i]] = SAdaptC(first_model.conv1, in_channels, 32)
+            elif model_set[i] == 'n': self.conv1[self.key_list[i]] = second_model.conv1 if new_set else nn.Conv2d(in_channels, 32, kernel_size=8, stride=4)
+            i += 1
+            self.conv2 = nn.ModuleDict()
+            if model_set[i] == 'r': self.conv2[self.key_list[i]] =  first_model.conv2
+            elif model_set[i] == 'a': self.conv2[self.key_list[i]] = SAdaptC(first_model.conv2, 32, 64)
+            elif model_set[i] == 'n': self.conv2[self.key_list[i]] = second_model.conv2 if new_set else nn.Conv2d(32, 64, kernel_size=4, stride=2)
+            i += 1
+            self.conv3 = nn.ModuleDict()
+            if model_set[i] == 'r': self.conv3[self.key_list[i]] =  first_model.conv3
+            elif model_set[i] == 'a': self.conv3[self.key_list[i]] = SAdaptC(first_model.conv3, 64, 64)
+            elif model_set[i] == 'n': self.conv3[self.key_list[i]] = second_model.conv3 if new_set else nn.Conv2d(64, 64, kernel_size=3, stride=1)
+            i += 1
+
+            in_channels = 7 * 7 * 64 if not high_reso else 12 * 12 * 64
+        
+        self.fc1 = nn.ModuleDict()
+        if model_set[i] == 'r': self.fc1[self.key_list[i]] =  first_model.fc1
+        elif model_set[i] == 'a': self.fc1[self.key_list[i]] = SAdaptL(first_model.fc1, in_channels, 512)
+        elif model_set[i] == 'n': self.fc1[self.key_list[i]] = second_model.fc1 if new_set else nn.Linear(in_channels, 512)
+        i += 1
+        self.fc2 = nn.ModuleDict()
+        if model_set[i] == 'r': self.fc2[self.key_list[i]] =  first_model.fc2
+        elif model_set[i] == 'a': self.fc2[self.key_list[i]] = SAdaptL(first_model.fc2, 512, 256)
+        elif model_set[i] == 'n': self.fc2[self.key_list[i]] = second_model.fc2 if new_set else nn.Linear(512, 256)
+        i += 1
+        self.fc3 = nn.ModuleDict()
+        if model_set[i] == 'r': self.fc3[self.key_list[i]] =  first_model.fc3
+        elif model_set[i] == 'a': self.fc3[self.key_list[i]] = SAdaptL(first_model.fc3, 256, 128)
+        elif model_set[i] == 'n': self.fc3[self.key_list[i]] = second_model.fc3 if new_set else nn.Linear(256, 128)
+        i += 1
+        self.fc4 = nn.ModuleDict()
+        if model_set[i] == 'r': self.fc4[self.key_list[i]] =  first_model.fc4
+        elif model_set[i] == 'a': self.fc4[self.key_list[i]] = SAdaptL(first_model.fc4, 128, out_channels)
+        elif model_set[i] == 'n': self.fc4[self.key_list[i]] = second_model.fc4 if new_set else nn.Linear(128, out_channels)
+
+    def forward(self, x):
+        if not self.ram:
+            x = x / 255.
+            x = F.relu(self.conv1[self.key_list[0]](x))
+            x = F.relu(self.conv2[self.key_list[1]](x))
+            x = F.relu(self.conv3[self.key_list[2]](x))
+            x = x.reshape(x.size(0), -1)
+
+            adv = F.relu(self.fc1[self.key_list[3]](x))
+            adv = F.relu(self.fc2[self.key_list[4]](adv))
+            adv = F.relu(self.fc3[self.key_list[5]](adv))
+            adv = self.fc4[self.key_list[6]](adv)
+        else:
+            adv = F.relu(self.fc1[self.key_list[0]](x))
+            adv = F.relu(self.fc2[self.key_list[1]](adv))
+            adv = F.relu(self.fc3[self.key_list[2]](adv))
+            adv = self.fc4[self.key_list[3]](adv)
+        return adv
 
 class Action_log():
     def __init__(self, action_space_n):
@@ -550,6 +646,9 @@ def make_env(env_name, high_reso, color, no_stack, eval_out=False):
 def is_ram(task_name):
     return '-ram' in task_name
 
+def change_dict_key(d, old_key, new_key, default_value=None):
+    d[new_key] = d.pop(old_key, default_value)
+
 @hydra.main(config_name='config/atari_gdqn_config.yaml')
 def main(cfg):
     set_seed(cfg.seed)
@@ -577,6 +676,7 @@ def main(cfg):
         mlflow.log_param('param_coef', cfg.param_coef)
         mlflow.log_param('new_set', cfg.new_set)
         mlflow.log_param('act_deform', cfg.act_deform)
+        mlflow.log_param('mode', cfg.mode)
         mlflow.set_tag('env', cfg.env)
         mlflow.set_tag('env1', cfg.env1)
         mlflow.set_tag('commitid', get_commitid())
@@ -605,38 +705,84 @@ def main(cfg):
         env.seed(cfg.seed)
         eval_env.seed(cfg.seed)
 
-        first_env = make_env(cfg.env, cfg.high_reso, cfg.color, cfg.no_stack, eval_out=False)
-        first_state = first_env.observation_space.shape[0]
-        first_action = first_env.action_space.n
-        if is_ram(cfg.env):
-            first_model = RamNet_2(first_state, first_action)
+        if cfg.mode == 'normal' or cfg.mode == 'set_struct' or cfg.mode == 'third':
+            first_env = make_env(cfg.env, cfg.high_reso, cfg.color, cfg.no_stack, eval_out=False)
+            first_state = first_env.observation_space.shape[0]
+            first_action = first_env.action_space.n
+            if is_ram(cfg.env):
+                first_model = RamNet_2(first_state, first_action)
+            else:
+                first_model = Net_2(first_state, first_action, high_reso=cfg.high_reso)
+            local_model_path = check_and_get(cfg.load)
+            first_model.load_state_dict(torch.load(local_model_path, map_location=cfg.device))
+
+            second_env = make_env(cfg.env1, cfg.high_reso, cfg.color, cfg.no_stack, eval_out=False)
+            second_state = second_env.observation_space.shape[0]
+            second_action = second_env.action_space.n
+            if is_ram(cfg.env1):
+                second_model = RamNet_2(second_state, second_action)
+            else:
+                second_model = Net_2(second_state, second_action, high_reso=cfg.high_reso)
+            if cfg.load1_0:
+                load_model_path = check_and_get(cfg.load1_0)
+                second_model.load_state_dict(torch.load(local_model_path, map_location=cfg.device))
+
+            if cfg.mode == 'normal':
+                q_func = GNet(second_state, second_action, cfg.env, first_model, cfg.env1, second_model, no_grow=cfg.no_grow, 
+                    high_reso=cfg.high_reso, task_num=cfg.task_num, new_set=cfg.new_set)
+
+                if cfg.load1:
+                    local_model_path = check_and_get(cfg.load1)
+                    q_func.load_state_dict(torch.load(local_model_path, map_location=cfg.device))
+
+            elif cfg.mode == 'set_struct':
+                q_func = SNet(second_state, second_action, cfg.model_set, first_model, second_model, new_set=cfg.new_set)
+
+            elif cfg.mode == 'third':
+                q_func = GNet(second_state, second_action, cfg.env, first_model, cfg.env1, second_model, no_grow=cfg.no_grow, 
+                    high_reso=cfg.high_reso, task_num=cfg.task_num, new_set=cfg.new_set, task_num=2)
+                load_model_path = check_and_get(cfg.load1)
+                load_model_dict = torch.load(local_model_path, map_location=cfg.device)
+                load_model_keys = list(load_model_dict.keys())
+                if q_func.fc1_1_exist: 
+                    for name in load_model_keys:
+                        if 'fc1' in name:
+                            change_dict_key(load_model_dict, name, name.replace('fc1', 'fc1_1'))
+                if q_func.fc4_1_exist: 
+                    for name in load_model_keys:
+                        if 'fc4' in name:
+                            change_dict_key(load_model_dict, name, name.replace('fc4', 'fc4_1'))
+                for name, param in q_func.named_parameters():
+                    name_ = name.replace('.LinearDict','')
+                    if name_ in load_model_dict.keys():
+                        param.data = load_model_dict[name_].data
+
+        elif cfg.mode == 'trans':
+            local_model_path = check_and_get(cfg.load)
+            load_model_dict = torch.load(local_model_path, map_location=cfg.device)
+            load_model_keys = load_model_dict.keys()
+
+            second_env = make_env(cfg.env1, cfg.high_reso, cfg.color, cfg.no_stack, eval_out=False)
+            second_state = second_env.observation_space.shape[0]
+            second_action = second_env.action_space.n
+            if is_ram(cfg.env1):
+                q_func = RamNet_2(second_state, second_action)
+            else:
+                q_func = Net_2(second_state, second_action, high_reso=cfg.high_reso)
+            
+            for name, param in q_func.named_parameters():
+                if name in load_model_keys:
+                    param.data = load_model_dict[name].data
+
+
+        if cfg.mode == 'normal' or cfg.mode == 'third':
+            optimizer_struct = optim.RMSprop(
+                q_func.struct_parameters(), lr=0.00025, alpha=0.95, eps=1e-2)
+            optimizer_param = optim.RMSprop(
+                q_func.param_parameters(), lr=0.00025, alpha=0.95, eps=1e-2)
         else:
-            first_model = Net_2(first_state, first_action, high_reso=cfg.high_reso)
-        local_model_path = check_and_get(cfg.load)
-        first_model.load_state_dict(torch.load(local_model_path, map_location=cfg.device))
-
-        second_env = make_env(cfg.env1, cfg.high_reso, cfg.color, cfg.no_stack, eval_out=False)
-        second_state = second_env.observation_space.shape[0]
-        second_action = second_env.action_space.n
-        if is_ram(cfg.env1):
-            second_model = RamNet_2(second_state, second_action)
-        else:
-            second_model = Net_2(second_state, second_action, high_reso=cfg.high_reso)
-        if cfg.load1_0:
-            load_model_path = check_and_get(cfg.load1_0)
-            second_model.load_state_dict(torch.load(local_model_path, map_location=cfg.device))
-
-        q_func = GNet(second_state, second_action, cfg.env, first_model, cfg.env1, second_model, no_grow=cfg.no_grow, 
-            high_reso=cfg.high_reso, task_num=cfg.task_num, new_set=cfg.new_set)
-
-        if cfg.load1:
-            local_model_path = check_and_get(cfg.load1)
-            q_func.load_state_dict(torch.load(local_model_path, map_location=cfg.device))
-
-        optimizer_struct = optim.RMSprop(
-            q_func.struct_parameters(), lr=0.00025, alpha=0.95, eps=1e-2)
-        optimizer_param = optim.RMSprop(
-            q_func.param_parameters(), lr=0.00025, alpha=0.95, eps=1e-2)
+            optimizer = optim.RMSprop(
+                q_func.parameters(), lr=0.00025, alpha=0.95, eps=1e-2)
 
         if cfg.prioritized:
             memory = PrioritizedReplayBuffer(capacity=cfg.replay_capacity, beta_steps=cfg.steps - cfg.replay_start_step, nstep=cfg.nstep)
@@ -650,12 +796,19 @@ def main(cfg):
         explorer = epsilon_greedy.LinearDecayEpsilonGreedy(
             start_eps=1.0, end_eps=0.1, decay_steps=1e6)
 
-        agent = gdqn.GDoubleDQN(q_func, optimizer_struct, optimizer_param, memory, cfg.gamma,
-                              explorer, cfg.device, action_list, batch_size=32,
-                              target_update_interval=10000,
-                              replay_start_step=cfg.replay_start_step,
-                              huber=cfg.huber, param_coef=cfg.param_coef,
-                              struct_retio=cfg.struct_retio, param_retio=cfg.param_retio)
+        if cfg.mode == 'normal' or cfg.mode == 'third':
+            agent = gdqn.GDoubleDQN(q_func, optimizer_struct, optimizer_param, memory, cfg.gamma,
+                                explorer, cfg.device, action_list=action_list, batch_size=32,
+                                target_update_interval=10000,
+                                replay_start_step=cfg.replay_start_step,
+                                huber=cfg.huber, param_coef=cfg.param_coef,
+                                struct_retio=cfg.struct_retio, param_retio=cfg.param_retio)
+        else:
+            agent = dqn.DoubleDQN(q_func, optimizer_struct, optimizer, memory, cfg.gamma,
+                                explorer, cfg.device, action_list=action_list, batch_size=32,
+                                target_update_interval=10000,
+                                replay_start_step=cfg.replay_start_step,
+                                huber=cfg.huber)
 
         if cfg.demo:
             for x in range(10):

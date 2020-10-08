@@ -9,7 +9,7 @@ from accel.replay_buffers.prioritized_replay_buffer import PrioritizedReplayBuff
 
 class DQN:
     def __init__(self, q_func, optimizer, replay_buffer, gamma, explorer,
-                 device,
+                 device, action_list=None, 
                  batch_size=32,
                  update_interval=4,
                  target_update_interval=200,
@@ -23,6 +23,7 @@ class DQN:
         self.gamma = gamma
         self.explorer = explorer
         self.device = device
+        self.action_list = action_list
         self.batch_size = batch_size
         self.update_interval = update_interval
         self.target_update_interval = target_update_interval
@@ -43,9 +44,15 @@ class DQN:
         action = self.explorer.act(
             self.total_steps, action_value, greedy=greedy)
         if act_value_out:
-            return action.item(), action_value
+            if self.action_list is not None:
+                return self.action_list[action.item()], action_value
+            else:
+                return action.item(), action_value
         else:
-            return action.item()
+            if self.action_list is not None:
+                return self.action_list[action.item()]
+            else:
+                return action.item()
 
     def update(self, obs, action, next_obs, reward, valid):
         self.replay_buffer.push(obs, action, next_obs,

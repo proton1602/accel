@@ -9,7 +9,7 @@ from accel.replay_buffers.prioritized_replay_buffer import PrioritizedReplayBuff
 
 class GDQN:
     def __init__(self, q_func, optimizer_struct, optimizer_param, replay_buffer, gamma, explorer,
-                 device, action_list, 
+                 device, action_list=None, 
                  batch_size=32,
                  update_interval=4,
                  target_update_interval=200,
@@ -53,9 +53,15 @@ class GDQN:
         action = self.explorer.act(
             self.total_steps, action_value, greedy=greedy)
         if act_value_out:
-            return self.action_list[action.item()], action_value
+            if self.action_list is not None:
+                return self.action_list[action.item()], action_value
+            else:
+                return action.item(), action_value
         else:
-            return self.action_list[action.item()]
+            if self.action_list is not None:
+                return self.action_list[action.item()]
+            else:
+                return action.item()
 
     def update(self, obs, action, next_obs, reward, valid):
         self.replay_buffer.push(obs, action, next_obs,
