@@ -337,12 +337,12 @@ class GNet(nn.Module):
                 self.fc4_1 = GLinear(128, out_channels, second_model.fc4, new_set=new_set)
                 self.fc4_1_exist = True
         elif self.f2s == 'img2ram':
-            self.conv1 = GConv2d(in_channels, 32, second_model.conv1, kernel_size=8, stride=4, 
-                module_list=[first_model.conv1], no_grow=self.no_grow, new_set=new_set)
-            self.conv2 = GConv2d(32, 64, second_model.conv2, kernel_size=4, stride=2, 
-                module_list=[first_model.conv2], no_grow=self.no_grow, new_set=new_set)
-            self.conv3 = GConv2d(64, 64, second_model.conv3, kernel_size=3, stride=1, 
-                module_list=[first_model.conv3], no_grow=self.no_grow, new_set=new_set)
+            self.conv1 = GConv2d(in_channels, 32, None, kernel_size=8, stride=4, 
+                module_list=[first_model.conv1], no_grow=self.no_grow)
+            self.conv2 = GConv2d(32, 64, None, kernel_size=4, stride=2, 
+                module_list=[first_model.conv2], no_grow=self.no_grow)
+            self.conv3 = GConv2d(64, 64, None, kernel_size=3, stride=1, 
+                module_list=[first_model.conv3], no_grow=self.no_grow)
             if self.linear_size == in_channels:
                 self.fc1 = GLinear(self.linear_size, 512, second_model.fc1, module_list=[first_model.fc1], new_set=new_set)
             else:
