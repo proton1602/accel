@@ -736,7 +736,7 @@ def main(cfg):
                     q_func.load_state_dict(torch.load(local_model_path, map_location=cfg.device))
 
             elif cfg.mode == 'set_struct':
-                q_func = SNet(second_state, second_action, cfg.model_set, first_model, second_model, new_set=cfg.new_set)
+                q_func = SNet(second_state, second_action, cfg.model_set, first_model, second_model, new_set=cfg.new_set, ram=is_ram(cfg.env1))
 
             elif cfg.mode == 'third':
                 q_func = GNet(second_state, second_action, cfg.env, first_model, cfg.env1, second_model, no_grow=cfg.no_grow, 
@@ -744,6 +744,9 @@ def main(cfg):
                 local_model_path = check_and_get(cfg.load1)
                 load_model_dict = torch.load(local_model_path, map_location=cfg.device)
                 load_model_keys = list(load_model_dict.keys())
+                for name in load_model_keys:
+                    if 'adapt0.main' in name:
+                        change_dict_key(load_model_dict, name, name.replace('adapt0.main', 'reuse0'))
                 if q_func.fc1_1_exist: 
                     for name in load_model_keys:
                         if 'fc1' in name:
