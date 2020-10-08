@@ -677,6 +677,7 @@ def main(cfg):
         mlflow.log_param('new_set', cfg.new_set)
         mlflow.log_param('act_deform', cfg.act_deform)
         mlflow.log_param('mode', cfg.mode)
+        mlflow.log_param('model_set', cfg.model_set)
         mlflow.set_tag('env', cfg.env)
         mlflow.set_tag('env1', cfg.env1)
         mlflow.set_tag('commitid', get_commitid())
