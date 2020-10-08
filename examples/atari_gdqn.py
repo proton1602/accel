@@ -724,7 +724,7 @@ def main(cfg):
             else:
                 second_model = Net_2(second_state, second_action, high_reso=cfg.high_reso)
             if cfg.load1_0:
-                load_model_path = check_and_get(cfg.load1_0)
+                local_model_path = check_and_get(cfg.load1_0)
                 second_model.load_state_dict(torch.load(local_model_path, map_location=cfg.device))
 
             if cfg.mode == 'normal':
@@ -741,7 +741,7 @@ def main(cfg):
             elif cfg.mode == 'third':
                 q_func = GNet(second_state, second_action, cfg.env, first_model, cfg.env1, second_model, no_grow=cfg.no_grow, 
                     high_reso=cfg.high_reso, task_num=cfg.task_num, new_set=cfg.new_set)
-                load_model_path = check_and_get(cfg.load1)
+                local_model_path = check_and_get(cfg.load1)
                 load_model_dict = torch.load(local_model_path, map_location=cfg.device)
                 load_model_keys = list(load_model_dict.keys())
                 if q_func.fc1_1_exist: 
