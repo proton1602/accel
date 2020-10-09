@@ -329,7 +329,7 @@ def main(cfg):
             start_eps=1.0, end_eps=0.1, decay_steps=1e6)
 
         agent = dqn.DoubleDQN(q_func, optimizer, memory, cfg.gamma,
-                              explorer, cfg.device, action_list=action_list, 
+                              explorer, cfg.device, 
                               batch_size=32,
                               target_update_interval=10000,
                               replay_start_step=cfg.replay_start_step,
@@ -348,7 +348,7 @@ def main(cfg):
                     while not done:
                         action = agent.act(obs, greedy=True)
                         action_log(action)
-                        obs, reward, done, _ = eval_env.step(action)
+                        obs, reward, done, _ = eval_env.step(action_list[action])
                         # eval_env.render()
 
                         # print(reward)
@@ -383,7 +383,7 @@ def main(cfg):
 
             while not done:
                 action = agent.act(obs)
-                next_obs, reward, done, _ = env.step(action)
+                next_obs, reward, done, _ = env.step(action_list[action])
                 total_reward += reward
                 step += 1
 
@@ -405,7 +405,7 @@ def main(cfg):
                     while not done:
                         action, action_value = agent.act(obs, greedy=True, act_value_out=True)
                         action_log(action)
-                        obs, reward, done, _ = eval_env.step(action)
+                        obs, reward, done, _ = eval_env.step(action_list[action])
 
                         total_reward += reward
 
@@ -452,7 +452,7 @@ def main(cfg):
             while not done:
                 action, action_value = agent.act(obs, greedy=True, act_value_out=True)
                 action_log(action)
-                obs, reward, done, _ = eval_env.step(action)
+                obs, reward, done, _ = eval_env.step(action_list[action])
 
                 total_reward += reward
 

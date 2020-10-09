@@ -774,7 +774,7 @@ def main(cfg):
                 q_func = RamNet_2(second_state, second_action)
             else:
                 q_func = Net_2(second_state, second_action, high_reso=cfg.high_reso)
-            
+
             for name, param in q_func.named_parameters():
                 if name in load_model_keys:
                     if param.data.size() == load_model_dict[name].data.size():
@@ -804,14 +804,14 @@ def main(cfg):
 
         if cfg.mode == 'normal' or cfg.mode == 'third':
             agent = gdqn.GDoubleDQN(q_func, optimizer_struct, optimizer_param, memory, cfg.gamma,
-                                explorer, cfg.device, action_list=action_list, batch_size=32,
+                                explorer, cfg.device, batch_size=32,
                                 target_update_interval=10000,
                                 replay_start_step=cfg.replay_start_step,
                                 huber=cfg.huber, param_coef=cfg.param_coef,
                                 struct_retio=cfg.struct_retio, param_retio=cfg.param_retio)
         else:
             agent = dqn.DoubleDQN(q_func, optimizer, memory, cfg.gamma,
-                                explorer, cfg.device, action_list=action_list, batch_size=32,
+                                explorer, cfg.device, batch_size=32,
                                 target_update_interval=10000,
                                 replay_start_step=cfg.replay_start_step,
                                 huber=cfg.huber)
@@ -829,7 +829,7 @@ def main(cfg):
                     while not done:
                         action = agent.act(obs, greedy=True)
                         action_log(action)
-                        obs, reward, done, _ = eval_env.step(action)
+                        obs, reward, done, _ = eval_env.step(action_list[action])
                         # eval_env.render()
 
                         # print(reward)
@@ -868,7 +868,7 @@ def main(cfg):
 
             while not done:
                 action = agent.act(obs)
-                next_obs, reward, done, _ = env.step(action)
+                next_obs, reward, done, _ = env.step(action_list[action])
                 total_reward += reward
                 step += 1
 
@@ -890,7 +890,7 @@ def main(cfg):
                     while not done:
                         action, action_value = agent.act(obs, greedy=True, act_value_out=True)
                         action_log(action)
-                        obs, reward, done, _ = eval_env.step(action)
+                        obs, reward, done, _ = eval_env.step(action_list[action])
 
                         total_reward += reward
 
@@ -940,7 +940,7 @@ def main(cfg):
             while not done:
                 action, action_value = agent.act(obs, greedy=True, act_value_out=True)
                 action_log(action)
-                obs, reward, done, _ = eval_env.step(action)
+                obs, reward, done, _ = eval_env.step(action_list[action])
 
                 total_reward += reward
 
