@@ -697,7 +697,7 @@ def main(cfg):
         action_list = list(range(env.action_space.n))
         if cfg.act_deform:
             if cfg.act_deform == 'inv':
-                action_list = action_list.reverse()
+                action_list.reverse()
             elif cfg.act_deform == "shift":
                 action_list = action_list[1:] + action_list[:1]
             else:
