@@ -779,7 +779,14 @@ def main(cfg):
                 if name in load_model_keys:
                     if param.data.size() == load_model_dict[name].data.size():
                         param.data = load_model_dict[name].data
-
+            if cfg.load1:
+                local_model_path = check_and_get(cfg.load1)
+                load_model_dict = torch.load(local_model_path, map_location=cfg.device)
+                load_model_keys = load_model_dict.keys()
+                for name, param in q_func.named_parameters():
+                    if name in load_model_keys:
+                        if param.data.size() == load_model_dict[name].data.size():
+                            param.data = load_model_dict[name].data
 
         if cfg.mode == 'normal' or cfg.mode == 'third':
             optimizer_struct = optim.RMSprop(
