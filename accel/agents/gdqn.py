@@ -35,6 +35,7 @@ class GDQN:
         self.struct_retio = struct_retio
         self.param_retio = param_retio
         self.total_steps = 0
+        self.struct_limit = 1_000_000
         self.replay_start_step = replay_start_step
 
         self.target_q_func.eval()
@@ -61,12 +62,17 @@ class GDQN:
                                 np.float32(reward), valid)
 
         self.total_steps += 1
-        if self.total_steps % (self.struct_retio+self.param_retio) < self.struct_retio:
-            self.set_phase('struct')
-        else:
-            self.set_phase('param')
+        # if self.total_steps % (self.struct_retio+self.param_retio) < self.struct_retio:
+        #     self.set_phase('struct')
+        # else:
+        #     self.set_phase('param')
         if self.total_steps % self.update_interval == 0:
-            return self.train()
+            self.train()
+            if self.total_steps < self.struct_limit:
+                self.set_phase('struct')
+                out = self.train()
+                self.set_phase('param')
+            return out
 
     def next_state_value(self, next_states):
         return self.target_q_func(next_states).max(1)[0].detach()
