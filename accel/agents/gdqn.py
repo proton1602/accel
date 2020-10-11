@@ -67,7 +67,7 @@ class GDQN:
         # else:
         #     self.set_phase('param')
         if self.total_steps % self.update_interval == 0:
-            self.train()
+            out = self.train()
             if self.total_steps < self.struct_limit:
                 self.set_phase('struct')
                 out = self.train()
